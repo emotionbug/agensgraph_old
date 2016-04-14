@@ -2950,6 +2950,8 @@ equal(const void *a, const void *b)
 			retval = _equalCopyStmt(a, b);
 			break;
 		case T_CreateStmt:
+		case T_CreateVLabelStmt:
+		case T_CreateELabelStmt:
 			retval = _equalCreateStmt(a, b);
 			break;
 		case T_TableLikeClause:
