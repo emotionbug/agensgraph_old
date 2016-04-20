@@ -429,7 +429,13 @@ typedef enum NodeTag
 	T_RoleSpec,
 	T_RangeTableSample,
 	T_TableSampleClause,
-	T_CypherReturnClause,
+
+    /* TAGS FOR CYPHER CLAUSES */
+    T_CypherClause,
+    T_CypherMatchClause,
+    T_CypherReturnClause,
+    T_CypherPattern,
+    T_CypherNode,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)
@@ -449,7 +455,7 @@ typedef enum NodeTag
 	 * purposes (usually because they are involved in APIs where we want to
 	 * pass multiple object types through the same pointer).
 	 */
-	T_TriggerData = 950,		/* in commands/trigger.h */
+	T_TriggerData = 1000,		/* in commands/trigger.h */
 	T_EventTriggerData,			/* in commands/event_trigger.h */
 	T_ReturnSetInfo,			/* in nodes/execnodes.h */
 	T_WindowObjectData,			/* private in nodeWindowAgg.c */

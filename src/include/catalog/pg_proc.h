@@ -5342,6 +5342,14 @@ DESCR("tsm_bernoulli_reset(internal)");
 DATA(insert OID = 3346 (  tsm_bernoulli_cost		PGNSP PGUID 12 1 0 0 0 f f f f t f v 7 0 2278 "2281 2281 2281 2281 2281 2281 2281" _null_ _null_ _null_ _null_ _null_ tsm_bernoulli_cost _null_ _null_ _null_ ));
 DESCR("tsm_bernoulli_cost(internal)");
 
+/* FOR CYPHER GRAPH TYPES */
+DATA(insert OID =  3315 ( vertex_in		PGNSP PGUID 12 1 0 0 0 f f f f f f i 1 0 3308 "2275" _null_ _null_ _null_ _null_ _null_ vertex_in _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3316 ( vertex_out	PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2275 "3308" _null_ _null_ _null_ _null_ _null_ vertex_out _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3317 ( vertex		PGNSP PGUID 12 1 0 0 0 f f f f f f i 3 0 3308 "19 20 3802" _null_ _null_ "{label, vid, prop_map}" _null_ _null_ vertex_constructor _null_ _null_ _null_ ));
+DESCR("build a vertex");
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,
