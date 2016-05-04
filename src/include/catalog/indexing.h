@@ -321,6 +321,10 @@ DECLARE_UNIQUE_INDEX(pg_tablesample_method_name_index, 3331, on pg_tablesample_m
 DECLARE_UNIQUE_INDEX(pg_tablesample_method_oid_index, 3332, on pg_tablesample_method using btree(oid oid_ops));
 #define TableSampleMethodOidIndexId  3332
 
+/* FOR CYPHER CLAUSES */
+DECLARE_UNIQUE_INDEX(ag_label_oid_index, 3296, on ag_label using btree(oid oid_ops));
+#define LabelOidIndexId 3296
+
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
 
