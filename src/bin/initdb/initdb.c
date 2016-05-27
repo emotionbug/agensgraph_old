@@ -2275,6 +2275,7 @@ setup_graph(void)
 		");\n",
 
 		"CREATE TABLE edge (",
+		"    eid BIGSERIAL PRIMARY KEY,",
 		"    inOID OID NOT NULL,",
 		"    incoming INT8 NOT NULL,",
 		"    outOID OID NOT NULL,",
