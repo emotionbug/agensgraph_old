@@ -3419,6 +3419,9 @@ findVarRangeItem(List *vars, char *variable)
 	{
 		VarRangeItem *vri = lfirst(cell);
 
+		if (vri->variable == NULL)
+			continue;
+
 		if (strcmp(vri->variable, variable) == 0)
 			return vri;
 	}
@@ -3469,9 +3472,10 @@ transformCypherNode(List **fromClause, List **targetList, Node **whereClause,
 
 		*targetList = lappend(*targetList, target);
 
-		vri = makeVarRangeItem(node->variable, rv);
-		*vars = lappend(*vars, vri);
 	}
+
+	vri = makeVarRangeItem(node->variable, rv);
+	*vars = lappend(*vars, vri);
 
 	/* TODO: property constraints (where clause) */
 
@@ -3508,12 +3512,14 @@ makeDirExpr(RangeVar *in, RangeVar *rel, RangeVar *out)
 	return (Node *) makeBoolExpr(AND_EXPR, args, -1);
 }
 
-static void
+static RangeVar *
 transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 				   CypherRel *rel, RangeVar *left, RangeVar *right)
 {
 	char	   *type;
 	RangeVar   *rv;
+
+	/* TODO: check duplicate variable (all relationships are unique) */
 
 	/* TODO: support multiple types (types cannot be NULL) */
 	type = rel->types == NULL ? "edge" : strVal(linitial(rel->types));
@@ -3587,6 +3593,80 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 	}
 
 	/* TODO: property constraints (where clause) */
+
+	return rv;
+}
+
+static void
+addNodeDupPred(Node **whereClause, List *vars)
+{
+	ListCell   *cell1;
+	ListCell   *cell2;
+	VarRangeItem *vri1;
+	VarRangeItem *vri2;
+	Node	   *oid1;
+	Node	   *vid1;
+	Node	   *oid2;
+	Node	   *vid2;
+	List	   *args;
+
+	foreach(cell1, vars)
+	{
+		vri1 = lfirst(cell1);
+
+		for_each_cell(cell2, lnext(cell1))
+		{
+			vri2 = lfirst(cell2);
+
+			oid1 = (Node *) makeAliasColRef(vri1->rv->alias, "tableoid");
+			vid1 = (Node *) makeAliasColRef(vri1->rv->alias, "vid");
+
+			oid2 = (Node *) makeAliasColRef(vri2->rv->alias, "tableoid");
+			vid2 = (Node *) makeAliasColRef(vri2->rv->alias, "vid");
+
+			args = list_make2(makeSimpleA_Expr(AEXPR_OP, "<>", oid1, oid2, -1),
+							  makeSimpleA_Expr(AEXPR_OP, "<>", vid1, vid2, -1));
+
+			whereClauseAndExpr(whereClause,
+							   (Node *) makeBoolExpr(OR_EXPR, args, -1));
+		}
+	}
+}
+
+static void
+addRelDupPred(Node **whereClause, List *rel_rvs)
+{
+	ListCell   *cell1;
+	ListCell   *cell2;
+	RangeVar   *rv1;
+	RangeVar   *rv2;
+	Node	   *oid1;
+	Node	   *eid1;
+	Node	   *oid2;
+	Node	   *eid2;
+	List	   *args;
+
+	foreach(cell1, rel_rvs)
+	{
+		rv1 = lfirst(cell1);
+
+		for_each_cell(cell2, lnext(cell1))
+		{
+			rv2 = lfirst(cell2);
+
+			oid1 = (Node *) makeAliasColRef(rv1->alias, "tableoid");
+			eid1 = (Node *) makeAliasColRef(rv1->alias, "eid");
+
+			oid2 = (Node *) makeAliasColRef(rv2->alias, "tableoid");
+			eid2 = (Node *) makeAliasColRef(rv2->alias, "eid");
+
+			args = list_make2(makeSimpleA_Expr(AEXPR_OP, "<>", oid1, oid2, -1),
+							  makeSimpleA_Expr(AEXPR_OP, "<>", eid1, eid2, -1));
+
+			whereClauseAndExpr(whereClause,
+							   (Node *) makeBoolExpr(OR_EXPR, args, -1));
+		}
+	}
 }
 
 static void
@@ -3600,6 +3680,7 @@ transformComponents(List **fromClause, List **targetList, Node **whereClause,
 		List	   *c = lfirst(cellc);
 		ListCell   *cellp;
 		List	   *vars = NIL;
+		List	   *rel_rvs = NIL;
 
 		foreach(cellp, c)
 		{
@@ -3617,6 +3698,8 @@ transformComponents(List **fromClause, List **targetList, Node **whereClause,
 
 			for (;;)
 			{
+				RangeVar *rel_rv;
+
 				cell = lnext(cell);
 
 				/* no more pattern chain (<rel,node> pair) */
@@ -3630,12 +3713,16 @@ transformComponents(List **fromClause, List **targetList, Node **whereClause,
 				rrv = transformCypherNode(fromClause, targetList, whereClause,
 										  &vars, node);
 
-				transformCypherRel(fromClause, targetList, whereClause,
-								   rel, lrv, rrv);
+				rel_rv = transformCypherRel(fromClause, targetList, whereClause,
+											rel, lrv, rrv);
+				rel_rvs = lappend(rel_rvs, rel_rv);
 
 				lrv = rrv;
 			}
 		}
+
+		addNodeDupPred(whereClause, vars);
+		addRelDupPred(whereClause, rel_rvs);
 	}
 }
 
