@@ -3436,6 +3436,7 @@ transformCypherNode(List **fromClause, List **targetList, Node **whereClause,
 	VarRangeItem *vri;
 	char	   *label;
 	RangeVar   *rv;
+	ColumnRef  *props;
 
 	vri = findVarRangeItem(*vars, node->variable);
 	if (vri != NULL)
@@ -3449,17 +3450,16 @@ transformCypherNode(List **fromClause, List **targetList, Node **whereClause,
 
 	*fromClause = lappend(*fromClause, rv);
 
+	props = makeAliasColRef(rv->alias, "properties");
 	if (node->variable != NULL)
 	{
 		ColumnRef  *oid;
 		ColumnRef  *vid;
-		ColumnRef  *props;
 		FuncCall   *vertex;
 		ResTarget  *target;
 
 		oid = makeAliasColRef(rv->alias, "tableoid");
 		vid = makeAliasColRef(rv->alias, "vid");
-		props = makeAliasColRef(rv->alias, "properties");
 
 		vertex = makeFuncCall(list_make1(makeString("vertex")),
 							  list_make3(oid, vid, props), -1);
@@ -3471,13 +3471,25 @@ transformCypherNode(List **fromClause, List **targetList, Node **whereClause,
 		target->location = -1;
 
 		*targetList = lappend(*targetList, target);
+	}
 
+	if (node->prop_map != NULL)
+	{
+		FuncCall   *con;
+		A_Const	   *constraint = makeNode(A_Const);
+
+		constraint->val.type = T_String;
+		constraint->val.val.str = node->prop_map;
+		constraint->location = -1;
+
+		con = makeFuncCall(list_make1(makeString("jsonb_contains")),
+						   list_make2(props, constraint), -1);
+
+		whereClauseAndExpr(whereClause, (Node *) con);
 	}
 
 	vri = makeVarRangeItem(node->variable, rv);
 	*vars = lappend(*vars, vri);
-
-	/* TODO: property constraints (where clause) */
 
 	return rv;
 }
@@ -3518,6 +3530,7 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 {
 	char	   *type;
 	RangeVar   *rv;
+	ColumnRef  *props;
 
 	/* TODO: check duplicate variable (all relationships are unique) */
 
@@ -3530,6 +3543,7 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 
 	*fromClause = lappend(*fromClause, rv);
 
+	props = makeAliasColRef(rv->alias, "properties");
 	if (rel->variable != NULL)
 	{
 		ColumnRef  *oid;
@@ -3538,7 +3552,6 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 		ColumnRef  *vin_vid;
 		ColumnRef  *vout_oid;
 		ColumnRef  *vout_vid;
-		ColumnRef  *props;
 		List	   *args;
 		FuncCall   *edge;
 		ResTarget  *target;
@@ -3549,7 +3562,6 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 		vin_vid = makeAliasColRef(rv->alias, "incoming");
 		vout_oid = makeAliasColRef(rv->alias, "outoid");
 		vout_vid = makeAliasColRef(rv->alias, "outgoing");
-		props = makeAliasColRef(rv->alias, "properties");
 
 		args = lcons(oid,
 			   lcons(eid,
@@ -3569,6 +3581,21 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 		target->location = -1;
 
 		*targetList = lappend(*targetList, target);
+	}
+
+	if (rel->prop_map != NULL)
+	{
+		FuncCall   *con;
+		A_Const	   *constraint = makeNode(A_Const);
+
+		constraint->val.type = T_String;
+		constraint->val.val.str = rel->prop_map;
+		constraint->location = -1;
+
+		con = makeFuncCall(list_make1(makeString("jsonb_contains")),
+						   list_make2(props, constraint), -1);
+
+		whereClauseAndExpr(whereClause, (Node *) con);
 	}
 
 	if (rel->direction == CYPHER_REL_DIR_NONE)
@@ -3591,8 +3618,6 @@ transformCypherRel(List **fromClause, List **targetList, Node **whereClause,
 		Assert(rel->direction == CYPHER_REL_DIR_RIGHT);
 		whereClauseAndExpr(whereClause, makeDirExpr(left, rv, right));
 	}
-
-	/* TODO: property constraints (where clause) */
 
 	return rv;
 }
