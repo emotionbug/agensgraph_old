@@ -4144,6 +4144,7 @@ _copyCypherMatchClause(const CypherMatchClause *from)
 	CypherMatchClause *newnode = makeNode(CypherMatchClause);
 
 	COPY_NODE_FIELD(patterns);
+	COPY_NODE_FIELD(where);
 
 	return newnode;
 }

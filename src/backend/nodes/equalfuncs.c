@@ -2600,6 +2600,7 @@ static bool
 _equalCypherMatchClause(const CypherMatchClause *a, const CypherMatchClause *b)
 {
 	COMPARE_NODE_FIELD(patterns);
+	COMPARE_NODE_FIELD(where);
 
 	return true;
 }
