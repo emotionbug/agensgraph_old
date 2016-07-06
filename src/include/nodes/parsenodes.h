@@ -3093,7 +3093,7 @@ typedef RangeSubselect RangePrevclause;
 typedef struct CypherMatchClause
 {
 	NodeTag		type;
-	List	   *patterns;
+	List	   *pattern;
 	Node	   *where;
 } CypherMatchClause;
 
@@ -3106,11 +3106,12 @@ typedef struct CypherReturnClause
 	Node	   *limit;		/* number of result tuples to return */
 } CypherReturnClause;
 
-typedef struct CypherPattern
+typedef struct CypherPath
 {
 	NodeTag		type;
+	Node	   *variable;	/* CypherName */
 	List	   *chain;		/* node, relationship, node, ... */
-} CypherPattern;
+} CypherPath;
 
 typedef struct CypherNode
 {

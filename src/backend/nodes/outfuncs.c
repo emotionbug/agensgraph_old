@@ -2984,7 +2984,7 @@ _outCypherMatchClause(StringInfo str, const CypherMatchClause *node)
 {
 	WRITE_NODE_TYPE("CYPHERMATCHCLAUSE");
 
-	WRITE_NODE_FIELD(patterns);
+	WRITE_NODE_FIELD(pattern);
 	WRITE_NODE_FIELD(where);
 }
 
@@ -3000,10 +3000,11 @@ _outCypherReturnClause(StringInfo str, const CypherReturnClause *node)
 }
 
 static void
-_outCypherPattern(StringInfo str, const CypherPattern *node)
+_outCypherPath(StringInfo str, const CypherPath *node)
 {
-	WRITE_NODE_TYPE("CYPHERPATTERN");
+	WRITE_NODE_TYPE("CYPHERPATH");
 
+	WRITE_NODE_FIELD(variable);
 	WRITE_NODE_FIELD(chain);
 }
 
@@ -3580,8 +3581,8 @@ _outNode(StringInfo str, const void *obj)
 			case T_CypherReturnClause:
 				_outCypherReturnClause(str, obj);
 				break;
-			case T_CypherPattern:
-				_outCypherPattern(str, obj);
+			case T_CypherPath:
+				_outCypherPath(str, obj);
 				break;
 			case T_CypherNode:
 				_outCypherNode(str, obj);
