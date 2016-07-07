@@ -433,8 +433,7 @@ typedef enum NodeTag
     /* TAGS FOR CYPHER CLAUSES */
     T_CypherClause,
     T_CypherMatchClause,
-    T_CypherReturnClause,
-    T_CypherWithClause,
+    T_CypherProjection,
     T_CypherPath,
     T_CypherNode,
     T_CypherRel,
