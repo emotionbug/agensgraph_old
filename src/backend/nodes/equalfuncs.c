@@ -1153,16 +1153,6 @@ _equalCreateStmt(const CreateStmt *a, const CreateStmt *b)
 }
 
 static bool
-_equalCreateLabelStmt(const CreateLabelStmt *a, const CreateLabelStmt *b)
-{
-	COMPARE_NODE_FIELD(relation);
-	COMPARE_NODE_FIELD(inhRelations);
-	COMPARE_SCALAR_FIELD(labkind);
-
-	return true;
-}
-
-static bool
 _equalTableLikeClause(const TableLikeClause *a, const TableLikeClause *b)
 {
 	COMPARE_NODE_FIELD(relation);
@@ -2590,6 +2580,16 @@ _equalRoleSpec(const RoleSpec *a, const RoleSpec *b)
 }
 
 static bool
+_equalCreateLabelStmt(const CreateLabelStmt *a, const CreateLabelStmt *b)
+{
+	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(inhRelations);
+	COMPARE_SCALAR_FIELD(labelKind);
+
+	return true;
+}
+
+static bool
 _equalCypherStmt(const CypherStmt *a, const CypherStmt *b)
 {
 	COMPARE_NODE_FIELD(last);
@@ -3024,9 +3024,6 @@ equal(const void *a, const void *b)
 		case T_CreateStmt:
 			retval = _equalCreateStmt(a, b);
 			break;
-		case T_CreateLabelStmt:
-			retval = _equalCreateLabelStmt(a, b);
-			break;
 		case T_TableLikeClause:
 			retval = _equalTableLikeClause(a, b);
 			break;
@@ -3407,6 +3404,10 @@ equal(const void *a, const void *b)
 			break;
 		case T_RoleSpec:
 			retval = _equalRoleSpec(a, b);
+			break;
+
+		case T_CreateLabelStmt:
+			retval = _equalCreateLabelStmt(a, b);
 			break;
 
 		case T_CypherStmt:
