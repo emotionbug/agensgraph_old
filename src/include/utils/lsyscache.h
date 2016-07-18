@@ -159,7 +159,7 @@ extern Oid	get_range_subtype(Oid rangeOid);
 extern char *get_tablesample_method_name(Oid tsmid);
 
 extern Oid	get_labname_labid(const char *labname);
-extern Oid	get_labid_tabid(Oid labid);
+extern Oid	get_labid_relid(Oid labid);
 
 #define type_is_array(typid)  (get_element_type(typid) != InvalidOid)
 /* type_is_array_domain accepts both plain arrays and domains over arrays */
