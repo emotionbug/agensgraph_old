@@ -158,6 +158,8 @@ typedef struct Query
 
 	List	   *constraintDeps; /* a list of pg_constraint OIDs that the query
 								 * depends on to be semantically valid */
+
+	List	   *graphPattern;	/* Cypher graph pattern list */
 } Query;
 
 
@@ -3129,6 +3131,12 @@ typedef struct CypherProjection
 
 #define cypherProjectionKind(n)	(((CypherProjection *) (n))->kind)
 
+typedef struct CypherCreateClause
+{
+	NodeTag		type;
+	List	   *pattern;
+} CypherCreateClause;
+
 typedef struct CypherPath
 {
 	NodeTag		type;
@@ -3142,6 +3150,7 @@ typedef struct CypherNode
 	Node	   *variable;	/* CypherName */
 	Node	   *label;		/* CypherName */
 	char	   *prop_map;	/* JSON object string */
+	bool		needCreation;/* will create */
 } CypherNode;
 
 #define CYPHER_REL_DIR_NONE		0
