@@ -159,7 +159,7 @@ typedef struct Query
 	List	   *constraintDeps; /* a list of pg_constraint OIDs that the query
 								 * depends on to be semantically valid */
 
-	List	   *graphPattern;	/* Cypher graph pattern list */
+	List	   *graphPattern;	/* graph pattern */
 } Query;
 
 
@@ -3150,7 +3150,7 @@ typedef struct CypherNode
 	Node	   *variable;	/* CypherName */
 	Node	   *label;		/* CypherName */
 	char	   *prop_map;	/* JSON object string */
-	bool		needCreation;/* will create */
+	bool		create;		/* this node will be created */
 } CypherNode;
 
 #define CYPHER_REL_DIR_NONE		0

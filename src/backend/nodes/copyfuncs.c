@@ -4188,7 +4188,7 @@ _copyCypherNode(const CypherNode *from)
 	COPY_NODE_FIELD(variable);
 	COPY_NODE_FIELD(label);
 	COPY_STRING_FIELD(prop_map);
-	COPY_SCALAR_FIELD(needCreation);
+	COPY_SCALAR_FIELD(create);
 
 	return newnode;
 }

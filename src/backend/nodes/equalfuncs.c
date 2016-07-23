@@ -2653,7 +2653,7 @@ _equalCypherNode(const CypherNode *a, const CypherNode *b)
 	COMPARE_NODE_FIELD(variable);
 	COMPARE_NODE_FIELD(label);
 	COMPARE_STRING_FIELD(prop_map);
-	COMPARE_SCALAR_FIELD(needCreation);
+	COMPARE_SCALAR_FIELD(create);
 
 	return true;
 }
@@ -2674,7 +2674,6 @@ static bool
 _equalCypherName(const CypherName *a, const CypherName *b)
 {
 	COMPARE_STRING_FIELD(name);
-	COMPARE_LOCATION_FIELD(location);
 
 	return true;
 }
