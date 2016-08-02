@@ -349,7 +349,7 @@ _copyScan(const Scan *from)
 static SeqScan *
 _copySeqScan(const SeqScan *from)
 {
-	SeqScan    *newnode = makeNode(SeqScan);
+	SeqScan	*newnode = makeNode(SeqScan);
 
 	/*
 	 * copy node superclass fields
@@ -461,7 +461,7 @@ _copyBitmapHeapScan(const BitmapHeapScan *from)
 static TidScan *
 _copyTidScan(const TidScan *from)
 {
-	TidScan    *newnode = makeNode(TidScan);
+	TidScan	*newnode = makeNode(TidScan);
 
 	/*
 	 * copy node superclass fields
@@ -546,7 +546,7 @@ _copyValuesScan(const ValuesScan *from)
 static CteScan *
 _copyCteScan(const CteScan *from)
 {
-	CteScan    *newnode = makeNode(CteScan);
+	CteScan	*newnode = makeNode(CteScan);
 
 	/*
 	 * copy node superclass fields
@@ -995,6 +995,23 @@ _copyLimit(const Limit *from)
 	return newnode;
 }
 
+static ModifyGraph *
+_copyModifyGraph(const ModifyGraph *from)
+{
+	ModifyGraph *newnode = makeNode(ModifyGraph);
+
+	CopyPlanFields((const Plan *) from, (Plan *) newnode);
+
+	COPY_SCALAR_FIELD(canSetTag);
+	COPY_SCALAR_FIELD(operation);
+	COPY_SCALAR_FIELD(last);
+	COPY_SCALAR_FIELD(detach);
+	COPY_NODE_FIELD(subplan);
+	COPY_NODE_FIELD(exprs);
+
+	return newnode;
+}
+
 /*
  * _copyNestLoopParam
  */
@@ -1405,7 +1422,7 @@ _copyBoolExpr(const BoolExpr *from)
 static SubLink *
 _copySubLink(const SubLink *from)
 {
-	SubLink    *newnode = makeNode(SubLink);
+	SubLink	*newnode = makeNode(SubLink);
 
 	COPY_SCALAR_FIELD(subLinkType);
 	COPY_SCALAR_FIELD(subLinkId);
@@ -1423,7 +1440,7 @@ _copySubLink(const SubLink *from)
 static SubPlan *
 _copySubPlan(const SubPlan *from)
 {
-	SubPlan    *newnode = makeNode(SubPlan);
+	SubPlan	*newnode = makeNode(SubPlan);
 
 	COPY_SCALAR_FIELD(subLinkType);
 	COPY_NODE_FIELD(testexpr);
@@ -1648,7 +1665,7 @@ _copyArrayExpr(const ArrayExpr *from)
 static RowExpr *
 _copyRowExpr(const RowExpr *from)
 {
-	RowExpr    *newnode = makeNode(RowExpr);
+	RowExpr	*newnode = makeNode(RowExpr);
 
 	COPY_NODE_FIELD(args);
 	COPY_SCALAR_FIELD(row_typeid);
@@ -1717,7 +1734,7 @@ _copyMinMaxExpr(const MinMaxExpr *from)
 static XmlExpr *
 _copyXmlExpr(const XmlExpr *from)
 {
-	XmlExpr    *newnode = makeNode(XmlExpr);
+	XmlExpr	*newnode = makeNode(XmlExpr);
 
 	COPY_SCALAR_FIELD(op);
 	COPY_STRING_FIELD(name);
@@ -1943,7 +1960,7 @@ _copyOnConflictExpr(const OnConflictExpr *from)
 static PathKey *
 _copyPathKey(const PathKey *from)
 {
-	PathKey    *newnode = makeNode(PathKey);
+	PathKey	*newnode = makeNode(PathKey);
 
 	/* EquivalenceClasses are never moved, so just shallow-copy the pointer */
 	COPY_SCALAR_FIELD(pk_eclass);
@@ -2344,7 +2361,7 @@ _copyParamRef(const ParamRef *from)
 static A_Const *
 _copyAConst(const A_Const *from)
 {
-	A_Const    *newnode = makeNode(A_Const);
+	A_Const	*newnode = makeNode(A_Const);
 
 	/* This part must duplicate _copyValue */
 	COPY_SCALAR_FIELD(val.type);
@@ -2632,7 +2649,7 @@ _copyConstraint(const Constraint *from)
 static DefElem *
 _copyDefElem(const DefElem *from)
 {
-	DefElem    *newnode = makeNode(DefElem);
+	DefElem	*newnode = makeNode(DefElem);
 
 	COPY_STRING_FIELD(defnamespace);
 	COPY_STRING_FIELD(defname);
@@ -2718,8 +2735,12 @@ _copyQuery(const Query *from)
 	COPY_NODE_FIELD(constraintDeps);
 	COPY_NODE_FIELD(withCheckOptions);
 
-    /* FOR CYPHER CLAUSES */
+	/* FOR CYPHER CLAUSES */
 	COPY_NODE_FIELD(graphPattern);
+	COPY_SCALAR_FIELD(graph.writeOp);
+	COPY_SCALAR_FIELD(graph.last);
+	COPY_SCALAR_FIELD(graph.detach);
+	COPY_NODE_FIELD(graph.exprs);
 
 	return newnode;
 }
@@ -4162,11 +4183,22 @@ _copyCypherProjection(const CypherProjection *from)
 static CypherCreateClause *
 _copyCypherCreateClause(const CypherCreateClause *from)
 {
-    CypherCreateClause *newnode = makeNode(CypherCreateClause);
+	CypherCreateClause *newnode = makeNode(CypherCreateClause);
 
-    COPY_NODE_FIELD(pattern);
+	COPY_NODE_FIELD(pattern);
 
-    return newnode;
+	return newnode;
+}
+
+static CypherDeleteClause *
+_copyCypherDeleteClause(const CypherDeleteClause *from)
+{
+	CypherDeleteClause *newnode = makeNode(CypherDeleteClause);
+
+	COPY_SCALAR_FIELD(detach);
+	COPY_NODE_FIELD(exprs);
+
+	return newnode;
 }
 
 static CypherPath *
@@ -4443,6 +4475,9 @@ copyObject(const void *from)
 			break;
 		case T_Limit:
 			retval = _copyLimit(from);
+			break;
+		case T_ModifyGraph:
+			retval = _copyModifyGraph(from);
 			break;
 		case T_NestLoopParam:
 			retval = _copyNestLoopParam(from);
@@ -5106,6 +5141,9 @@ copyObject(const void *from)
 			break;
 		case T_CypherCreateClause:
 			retval = _copyCypherCreateClause(from);
+			break;
+		case T_CypherDeleteClause:
+			retval = _copyCypherDeleteClause(from);
 			break;
 		case T_CypherPath:
 			retval = _copyCypherPath(from);
