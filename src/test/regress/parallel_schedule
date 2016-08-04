@@ -110,3 +110,9 @@ test: event_trigger
 
 # run stats by itself because its delay may be insufficient under heavy load
 test: stats
+
+# run cypher dml test
+test: cypher_dml
+
+# run cypher ddl test
+test: cypher_ddl

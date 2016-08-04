@@ -156,3 +156,5 @@ test: xml
 test: event_trigger
 test: stats
 test: tablesample
+test: cypher_ddl
+test: cypher_dml
