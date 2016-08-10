@@ -322,17 +322,17 @@ DECLARE_UNIQUE_INDEX(pg_tablesample_method_oid_index, 3332, on pg_tablesample_me
 #define TableSampleMethodOidIndexId  3332
 
 /* FOR CYPHER CLAUSES */
-DECLARE_UNIQUE_INDEX(ag_label_oid_index, 3296, on ag_label using btree(oid oid_ops));
-#define LabelOidIndexId 3296
+DECLARE_UNIQUE_INDEX(ag_label_oid_index, 7046, on ag_label using btree(oid oid_ops));
+#define LabelOidIndexId 7046
 
-DECLARE_UNIQUE_INDEX(ag_label_labname_index, 3327, on ag_label using btree(labname name_ops));
-#define LabelNameIndexId 3327
+DECLARE_UNIQUE_INDEX(ag_label_labname_index, 7047, on ag_label using btree(labname name_ops));
+#define LabelNameIndexId 7047
 
-DECLARE_UNIQUE_INDEX(ag_label_relid_index, 3330, on ag_label using btree(relid oid_ops));
-#define LabelRelidIndexId 3330
+DECLARE_UNIQUE_INDEX(ag_label_relid_index, 7048, on ag_label using btree(relid oid_ops));
+#define LabelRelidIndexId 7048
 
-DECLARE_UNIQUE_INDEX(ag_inherits_relid_seqno_index, 3331, on ag_inherits using btree(inhrelid oid_ops, inhseqno int4_ops));
-#define AgInheritsRelidSeqnoIndexId 3331
+DECLARE_UNIQUE_INDEX(ag_inherits_relid_seqno_index, 7051, on ag_inherits using btree(inhrelid oid_ops, inhseqno int4_ops));
+#define AgInheritsRelidSeqnoIndexId 7051
 
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
