@@ -79,7 +79,6 @@ typedef enum NodeTag
 	T_LockRows,
 	T_Limit,
     /* Cypher Clause */
-	T_CypherCreate,
 	T_ModifyGraph,
 	/* these aren't subclasses of Plan: */
 	T_NestLoopParam,
@@ -129,8 +128,7 @@ typedef enum NodeTag
 	T_LockRowsState,
 	T_LimitState,
     /* Cypher Clause */
-	T_CypherCreateState,
-	T_ModifyGraphState,
+    T_ModifyGraphState,
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)
@@ -586,7 +584,6 @@ typedef enum CmdType
 	CMD_GRAPHWRITE,				/* graph write query */
 	CMD_UTILITY,				/* cmds like create, destroy, copy, vacuum,
 								 * etc. */
-	CMD_CYPHERCREATE,			/* cypher stmt */
 	CMD_NOTHING					/* dummy command for instead nothing rules
 								 * with qual */
 } CmdType;
@@ -680,6 +677,7 @@ typedef enum OnConflictAction
 typedef enum GraphWriteOp
 {
 	GWROP_NONE = 0,
+	GWROP_CREATE,
 	GWROP_DELETE
 } GraphWriteOp;
 
