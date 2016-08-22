@@ -2969,6 +2969,23 @@ _outConstraint(StringInfo str, const Constraint *node)
 }
 
 static void
+_outJsonObject(StringInfo str, const JsonObject *node)
+{
+	WRITE_NODE_TYPE("JSONOBJECT");
+
+	WRITE_NODE_FIELD(keyvals);
+}
+
+static void
+_outJsonKeyVal(StringInfo str, const JsonKeyVal *node)
+{
+	WRITE_NODE_TYPE("JSONKEYVAL");
+
+	WRITE_NODE_FIELD(key);
+	WRITE_NODE_FIELD(val);
+}
+
+static void
 _outCreateLabelStmt(StringInfo str, const CreateLabelStmt *node)
 {
 	WRITE_NODE_TYPE("CREATELABELSTMT");
@@ -3051,7 +3068,7 @@ _outCypherNode(StringInfo str, const CypherNode *node)
 
 	WRITE_NODE_FIELD(variable);
 	WRITE_NODE_FIELD(label);
-	WRITE_STRING_FIELD(prop_map);
+	WRITE_NODE_FIELD(prop_map);
 }
 
 static void
@@ -3063,7 +3080,7 @@ _outCypherRel(StringInfo str, const CypherRel *node)
 	WRITE_NODE_FIELD(variable);
 	WRITE_NODE_FIELD(types);
 	WRITE_NODE_FIELD(varlen);
-	WRITE_STRING_FIELD(prop_map);
+	WRITE_NODE_FIELD(prop_map);
 }
 
 static void
@@ -3091,7 +3108,8 @@ _outGraphVertex(StringInfo str, const GraphVertex *node)
 
 	WRITE_STRING_FIELD(variable);
 	WRITE_STRING_FIELD(label);
-	WRITE_STRING_FIELD(prop_map);
+	WRITE_NODE_FIELD(prop_map);
+	WRITE_NODE_FIELD(es_prop_map);
 	WRITE_BOOL_FIELD(create);
 }
 
@@ -3103,7 +3121,8 @@ _outGraphEdge(StringInfo str, const GraphEdge *node)
 	WRITE_INT_FIELD(direction);
 	WRITE_STRING_FIELD(variable);
 	WRITE_STRING_FIELD(label);
-	WRITE_STRING_FIELD(prop_map);
+	WRITE_NODE_FIELD(prop_map);
+	WRITE_NODE_FIELD(es_prop_map);
 }
 
 /*
@@ -3631,6 +3650,13 @@ _outNode(StringInfo str, const void *obj)
 				break;
 			case T_XmlSerialize:
 				_outXmlSerialize(str, obj);
+				break;
+
+			case T_JsonObject:
+				_outJsonObject(str, obj);
+				break;
+			case T_JsonKeyVal:
+				_outJsonKeyVal(str, obj);
 				break;
 
 			case T_CreateLabelStmt:
