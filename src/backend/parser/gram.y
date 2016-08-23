@@ -14278,7 +14278,6 @@ cypher_node:
 					n->variable = $2;
 					n->label = $3;
 					n->prop_map = $4;
-					n->create = false;
 					$$ = (Node *) n;
 				}
 		;
