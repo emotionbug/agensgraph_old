@@ -322,6 +322,12 @@ DECLARE_UNIQUE_INDEX(pg_tablesample_method_oid_index, 3332, on pg_tablesample_me
 #define TableSampleMethodOidIndexId  3332
 
 /* FOR CYPHER CLAUSES */
+DECLARE_UNIQUE_INDEX(ag_graph_oid_index, 7041, on ag_graph using btree(oid oid_ops));
+#define GraphOidIndexId 7041
+
+DECLARE_UNIQUE_INDEX(ag_graph_graphname_index, 7042, on ag_graph using btree(graphname name_ops));
+#define GraphNameIndexId 7042
+
 DECLARE_UNIQUE_INDEX(ag_label_oid_index, 7046, on ag_label using btree(oid oid_ops));
 #define LabelOidIndexId 7046
 

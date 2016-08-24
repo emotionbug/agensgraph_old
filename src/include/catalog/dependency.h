@@ -152,8 +152,11 @@ typedef enum ObjectClass
 	MAX_OCLASS, 				/* MUST BE LAST */
 
     /* FOR CYPHER CLAUSES */
+	OCLASS_GRAPH,				/* ag_graph */
 	OCLASS_LABEL				/* ag_label */
 } ObjectClass;
+
+#define LAST_OCLASS		OCLASS_LABEL
 
 
 /* in dependency.c */

@@ -16,6 +16,7 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "catalog/ag_label_fn.h"
 #include "catalog/dependency.h"
@@ -61,6 +62,7 @@
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
+#include "commands/graphcmds.h"
 #include "commands/policy.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
@@ -160,7 +162,10 @@ static const Oid object_classes[MAX_OCLASS] = {
 	DefaultAclRelationId,		/* OCLASS_DEFACL */
 	ExtensionRelationId,		/* OCLASS_EXTENSION */
 	EventTriggerRelationId,		/* OCLASS_EVENT_TRIGGER */
-	PolicyRelationId			/* OCLASS_POLICY */
+	PolicyRelationId,			/* OCLASS_POLICY */
+	/* for Cypher clause */
+	GraphRelationId,			/* OCLASS_GRAPH */
+	LabelRelationId				/* OCLASS_LABEL */
 };
 
 
@@ -1270,6 +1275,10 @@ doDeletion(const ObjectAddress *object, int flags)
 
 		case OCLASS_TRANSFORM:
 			DropTransformById(object->objectId);
+			break;
+
+		case OCLASS_GRAPH:
+			RemoveGraphById(object->objectId);
 			break;
 
 		case OCLASS_LABEL:
@@ -2405,6 +2414,9 @@ getObjectClass(const ObjectAddress *object)
 
 		case TransformRelationId:
 			return OCLASS_TRANSFORM;
+
+		case GraphRelationId:
+			return OCLASS_GRAPH;
 
 		case LabelRelationId:
 			return OCLASS_LABEL;

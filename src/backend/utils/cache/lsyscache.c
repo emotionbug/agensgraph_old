@@ -3025,6 +3025,13 @@ get_tablesample_method_name(Oid tsmid)
 		return NULL;
 }
 
+/*				---------- AG_GRAPH CACHE ----------				 */
+
+Oid
+get_graphname_graphid(const char *graphname)
+{
+	return GetSysCacheOid1(GRAPHNAME, PointerGetDatum(graphname));
+}
 
 /*				---------- AG_LABEL CACHE ----------				 */
 
