@@ -14349,6 +14349,7 @@ cypher_label_opt:
 cypher_prop_map_opt:
 			json_object_expr
 			| Sconst			{ $$ = makeStringConst($1, @1); }
+			| '=' a_expr		{ $$ = $2; }
 			| /* EMPTY */		{ $$ = NULL; }
 		;
 
