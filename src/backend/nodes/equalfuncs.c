@@ -2744,6 +2744,16 @@ _equalGraphEdge(const GraphEdge *a, const GraphEdge *b)
 	return true;
 }
 
+
+static bool
+_equalCypherLoadFdwClause(const CypherLoadFdwClause *a,
+						  const CypherLoadFdwClause *b)
+{
+	COMPARE_NODE_FIELD(relation);
+
+	return true;
+}
+
 /*
  * Stuff from pg_list.h
  */
@@ -3522,6 +3532,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_CypherName:
 			retval = _equalCypherName(a, b);
+			break;
+		case T_CypherLoadFdwClause:
+			retval = _equalCypherLoadFdwClause(a, b);
 			break;
 
 			/*
