@@ -2673,6 +2673,14 @@ _equalCypherDeleteClause(const CypherDeleteClause *a,
 }
 
 static bool
+_equalCypherLoadClause(const CypherLoadClause *a, const CypherLoadClause *b)
+{
+	COMPARE_NODE_FIELD(relation);
+
+	return true;
+}
+
+static bool
 _equalCypherPath(const CypherPath *a, const CypherPath *b)
 {
 	COMPARE_NODE_FIELD(variable);
@@ -2740,16 +2748,6 @@ _equalGraphEdge(const GraphEdge *a, const GraphEdge *b)
 	COMPARE_STRING_FIELD(label);
 	COMPARE_NODE_FIELD(prop_map);
 	COMPARE_NODE_FIELD(es_prop_map);
-
-	return true;
-}
-
-
-static bool
-_equalCypherLoadFdwClause(const CypherLoadFdwClause *a,
-						  const CypherLoadFdwClause *b)
-{
-	COMPARE_NODE_FIELD(relation);
 
 	return true;
 }
@@ -3521,6 +3519,9 @@ equal(const void *a, const void *b)
 		case T_CypherDeleteClause:
 			retval = _equalCypherDeleteClause(a, b);
 			break;
+		case T_CypherLoadClause:
+			retval = _equalCypherLoadClause(a, b);
+			break;
 		case T_CypherPath:
 			retval = _equalCypherPath(a, b);
 			break;
@@ -3532,9 +3533,6 @@ equal(const void *a, const void *b)
 			break;
 		case T_CypherName:
 			retval = _equalCypherName(a, b);
-			break;
-		case T_CypherLoadFdwClause:
-			retval = _equalCypherLoadFdwClause(a, b);
 			break;
 
 			/*
