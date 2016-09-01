@@ -12123,6 +12123,8 @@ json_key_value_list:
 					{ $$ = list_make1($1); }
 			| json_key_value_list ',' json_key_value
 					{ $$ = lappend($1, $3); }
+			| /* EMPTY */
+					{ $$ = NIL; }
 		;
 
 json_key_value:
