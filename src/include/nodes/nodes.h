@@ -436,6 +436,7 @@ typedef enum NodeTag
 	/* TAGS FOR CYPHER CLAUSES */
 	T_JsonObject,
 	T_JsonKeyVal,
+	T_CypherSubPattern,
 	T_CypherClause,
 	T_CypherMatchClause,
 	T_CypherProjection,
