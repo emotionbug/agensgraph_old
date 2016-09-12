@@ -47,6 +47,7 @@
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
+#include "commands/graphcmds.h"
 #include "commands/policy.h"
 #include "commands/sequence.h"
 #include "commands/tablecmds.h"
@@ -1411,6 +1412,7 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 	int			parentsWithOids = 0;
 	bool		have_bogus_defaults = false;
 	int			child_attno;
+	bool		is_label = false;
 	static Node bogus_marker = {0};		/* marks conflicting defaults */
 
 	/*
@@ -1501,6 +1503,8 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 		AttrNumber *newattno;
 		AttrNumber	parent_attno;
 
+		if (is_label == false)
+			is_label = isLabel(parent);
 		/*
 		 * A self-exclusive lock is needed here.  If two backends attempt to
 		 * add children to the same parent simultaneously, and that parent has
@@ -1595,8 +1599,9 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 				 * Yes, try to merge the two column definitions. They must
 				 * have the same type, typmod, and collation.
 				 */
-				ereport(NOTICE,
-						(errmsg("merging multiple inherited definitions of column \"%s\"",
+				if (!is_label)
+					ereport(NOTICE,
+							(errmsg("merging multiple inherited definitions of column \"%s\"",
 								attributeName)));
 				def = (ColumnDef *) list_nth(inhSchema, exist_attno - 1);
 				typenameTypeIdAndMod(NULL, def->typeName, &defTypeId, &deftypmod);
@@ -1810,9 +1815,12 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 				 * have the same type, typmod, and collation.
 				 */
 				if (exist_attno == schema_attno)
-					ereport(NOTICE,
-					(errmsg("merging column \"%s\" with inherited definition",
+				{
+					if (!is_label)
+						ereport(NOTICE,
+						(errmsg("merging column \"%s\" with inherited definition",
 							attributeName)));
+				}
 				else
 					ereport(NOTICE,
 							(errmsg("moving and merging column \"%s\" with inherited definition", attributeName),
