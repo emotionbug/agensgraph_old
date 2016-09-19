@@ -3028,7 +3028,7 @@ get_tablesample_method_name(Oid tsmid)
 /*				---------- AG_GRAPH CACHE ----------				 */
 
 Oid
-get_graphname_graphid(const char *graphname)
+get_graphname_oid(const char *graphname)
 {
 	return GetSysCacheOid1(GRAPHNAME, PointerGetDatum(graphname));
 }
@@ -3058,21 +3058,33 @@ get_labname_labid(const char *labname, const char *graphname)
 Oid
 get_labid_relid(Oid labid)
 {
-    HeapTuple tp;
+	HeapTuple tp;
 
-    tp = SearchSysCache1(LABELOID, ObjectIdGetDatum(labid));
+	tp = SearchSysCache1(LABELOID, ObjectIdGetDatum(labid));
 
-    if (HeapTupleIsValid(tp))
-    {
-        Form_ag_label labtup = (Form_ag_label) GETSTRUCT(tp);
-        Oid relid;
+	if (HeapTupleIsValid(tp))
+	{
+		Form_ag_label labtup = (Form_ag_label) GETSTRUCT(tp);
+		Oid relid;
 
-        relid = labtup->relid;
-        ReleaseSysCache(tp);
-        return relid;
-    }
-    else
-    {
-        return InvalidOid;
-    }
+		relid = labtup->relid;
+		ReleaseSysCache(tp);
+		return relid;
+	}
+	else
+	{
+		return InvalidOid;
+	}
+}
+
+/*
+ * get_relid_labid
+ *		Returns the label OID for a given relation.
+ *
+ * Returns InvalidOid if there is no such a label.
+ */
+Oid
+get_relid_labid(Oid relid)
+{
+	return GetSysCacheOid1(LABELRELID, ObjectIdGetDatum(relid));
 }

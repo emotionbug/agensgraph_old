@@ -1688,3 +1688,12 @@ ALTER TABLE logged1 SET UNLOGGED; -- silently do nothing
 DROP TABLE logged3;
 DROP TABLE logged2;
 DROP TABLE logged1;
+
+--
+-- ALTER TABLE restriction with graph objects
+--
+
+CREATE GRAPH g;
+CREATE VLABEL v;
+ALTER TABLE g.v ADD COLUMN tmp int;
+DROP GRAPH g CASCADE;

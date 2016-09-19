@@ -1412,7 +1412,7 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 	int			parentsWithOids = 0;
 	bool		have_bogus_defaults = false;
 	int			child_attno;
-	bool		is_label = false;
+	bool		isLabel = false;
 	static Node bogus_marker = {0};		/* marks conflicting defaults */
 
 	/*
@@ -1503,8 +1503,9 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 		AttrNumber *newattno;
 		AttrNumber	parent_attno;
 
-		if (is_label == false)
-			is_label = isLabel(parent);
+		if (isLabel == false)
+			isLabel = RangeVarIsLabel(parent);
+
 		/*
 		 * A self-exclusive lock is needed here.  If two backends attempt to
 		 * add children to the same parent simultaneously, and that parent has
@@ -1599,7 +1600,7 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 				 * Yes, try to merge the two column definitions. They must
 				 * have the same type, typmod, and collation.
 				 */
-				if (!is_label)
+				if (!isLabel)
 					ereport(NOTICE,
 							(errmsg("merging multiple inherited definitions of column \"%s\"",
 								attributeName)));
@@ -1816,7 +1817,7 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 				 */
 				if (exist_attno == schema_attno)
 				{
-					if (!is_label)
+					if (!isLabel)
 						ereport(NOTICE,
 						(errmsg("merging column \"%s\" with inherited definition",
 							attributeName)));
