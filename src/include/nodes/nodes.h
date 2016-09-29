@@ -416,6 +416,7 @@ typedef enum NodeTag
 	T_ModifyGraphPath,
 	T_CreateGraphStmt,
 	T_CreateLabelStmt,
+	T_AlterLabelStmt,
 	T_CypherStmt,
 
 	/*
