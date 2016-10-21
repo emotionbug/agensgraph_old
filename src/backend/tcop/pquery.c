@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "catalog/ag_graph_fn.h"
 #include "commands/prepare.h"
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
@@ -862,6 +863,8 @@ PortalRun(Portal portal, long count, bool isTopLevel,
 		else
 			CurrentResourceOwner = saveResourceOwner;
 		PortalContext = savePortalContext;
+
+		DisableGraphDML = true;
 
 		PG_RE_THROW();
 	}
