@@ -2102,9 +2102,11 @@ CreateCommandTag(Node *parsetree)
 				}
 			}
 			break;
+
 		case T_CreateConstraintStmt:
 			tag = "CREATE CONSTRAINT";
 			break;
+
 		case T_DropConstraintStmt:
 			tag = "DROP CONSTRAINT";
 			break;
