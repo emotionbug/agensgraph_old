@@ -226,11 +226,6 @@ extern LimitPath *create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 				  Path *subpath,
 				  Node *limitOffset, Node *limitCount,
 				  int64 offset_est, int64 count_est);
-extern ModifyGraphPath *create_modifygraph_path(PlannerInfo *root,
-												RelOptInfo *rel, bool canSetTag, GraphWriteOp operation,
-												bool last, bool detach, Path *subpath, List *pattern,
-												List *exprs);
-
 extern Path *reparameterize_path(PlannerInfo *root, Path *path,
 					Relids required_outer,
 					double loop_count);
@@ -272,5 +267,13 @@ extern ParamPathInfo *get_joinrel_parampathinfo(PlannerInfo *root,
 						  List **restrict_clauses);
 extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 							Relids required_outer);
+
+/*
+ * For cypher clause
+ */
+extern ModifyGraphPath *create_modifygraph_path(PlannerInfo *root,
+												RelOptInfo *rel, bool canSetTag, GraphWriteOp operation,
+												bool last, bool detach, Path *subpath, List *resultRel,
+												List *pattern, List *exprs, List *sets);
 
 #endif   /* PATHNODE_H */

@@ -266,8 +266,10 @@ _readQuery(void)
 	READ_ENUM_FIELD(graph.writeOp, GraphWriteOp);
 	READ_BOOL_FIELD(graph.last);
 	READ_BOOL_FIELD(graph.detach);
+	READ_NODE_FIELD(graph.resultRel);
 	READ_NODE_FIELD(graph.pattern);
 	READ_NODE_FIELD(graph.exprs);
+	READ_NODE_FIELD(graph.sets);
 
 	READ_DONE();
 }
@@ -2255,6 +2257,7 @@ _readExtensibleNode(void)
 
 	READ_DONE();
 }
+
 static GraphPath *
 _readGraphPath(void)
 {
@@ -2273,8 +2276,6 @@ _readGraphVertex(void)
 
 	READ_STRING_FIELD(variable);
 	READ_STRING_FIELD(label);
-	READ_NODE_FIELD(prop_map);
-	READ_NODE_FIELD(es_prop_map);
 	READ_BOOL_FIELD(create);
 
 	READ_DONE();
@@ -2288,12 +2289,21 @@ _readGraphEdge(void)
 	READ_INT_FIELD(direction);
 	READ_STRING_FIELD(variable);
 	READ_STRING_FIELD(label);
-	READ_NODE_FIELD(prop_map);
-	READ_NODE_FIELD(es_prop_map);
 
 	READ_DONE();
 }
 
+static GraphSetProp *
+_readGraphSetProp(void)
+{
+	READ_LOCALS(GraphSetProp);
+
+	READ_NODE_FIELD(elem);
+	READ_NODE_FIELD(path);
+	READ_NODE_FIELD(expr);
+
+	READ_DONE();
+}
 
 /*
  * parseNodeString
@@ -2531,6 +2541,8 @@ parseNodeString(void)
 		return_value = _readGraphVertex();
 	else if (MATCH("GRAPHEDGE", 9))
 		return_value = _readGraphEdge();
+	else if (MATCH("GRAPHSETPROP", 12))
+		return_value = _readGraphSetProp();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

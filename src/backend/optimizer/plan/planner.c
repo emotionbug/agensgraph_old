@@ -92,7 +92,7 @@ typedef struct
 /* Local functions */
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
-static void preprocess_graph_pattern(PlannerInfo *root, List *pattern);
+static void preprocess_graph_sets(PlannerInfo *root, List *sets);
 static void inheritance_planner(PlannerInfo *root);
 static void grouping_planner(PlannerInfo *root, bool inheritance_update,
 				 double tuple_fraction);
@@ -697,10 +697,10 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	}
 
 	/* expressions for graph */
-	preprocess_graph_pattern(root, parse->graph.pattern);
 	parse->graph.exprs = (List *)
 		preprocess_expression(root, (Node *) parse->graph.exprs,
 							  EXPRKIND_TARGET);
+	preprocess_graph_sets(root, parse->graph.sets);
 
 	/*
 	 * In some cases we may want to transfer a HAVING clause into WHERE. We
@@ -934,39 +934,17 @@ preprocess_qual_conditions(PlannerInfo *root, Node *jtnode)
 }
 
 static void
-preprocess_graph_pattern(PlannerInfo *root, List *pattern)
+preprocess_graph_sets(PlannerInfo *root, List *sets)
 {
-	ListCell *lp;
+	ListCell *ls;
 
-	foreach(lp, pattern)
+	foreach(ls, sets)
 	{
-		GraphPath  *p = (GraphPath *) lfirst(lp);
-		ListCell   *le;
+		GraphSetProp *gsp = lfirst(ls);
 
-		foreach(le, p->chain)
-		{
-			Node *elem = (Node *) lfirst(le);
-
-			if (nodeTag(elem) == T_GraphVertex)
-			{
-				GraphVertex *gvertex = (GraphVertex *) elem;
-
-				if (gvertex->create)
-					gvertex->prop_map = preprocess_expression(root,
-												(Node *) gvertex->prop_map,
-												EXPRKIND_VALUES);
-			}
-			else
-			{
-				GraphEdge *gedge = (GraphEdge *) elem;
-
-				Assert(nodeTag(elem) == T_GraphEdge);
-
-				gedge->prop_map = preprocess_expression(root,
-												(Node *) gedge->prop_map,
-												EXPRKIND_VALUES);
-			}
-		}
+		gsp->elem = preprocess_expression(root, gsp->elem, EXPRKIND_TARGET);
+		gsp->path = preprocess_expression(root, gsp->path, EXPRKIND_VALUES);
+		gsp->expr = preprocess_expression(root, gsp->expr, EXPRKIND_VALUES);
 	}
 }
 
@@ -2047,8 +2025,10 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 													parse->graph.last,
 													parse->graph.detach,
 													path,
+													parse->graph.resultRel,
 													parse->graph.pattern,
-													parse->graph.exprs);
+													parse->graph.exprs,
+													parse->graph.sets);
 		}
 		/*
 		 * If this is an INSERT/UPDATE/DELETE, and we're not being called from
