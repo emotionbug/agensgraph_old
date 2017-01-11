@@ -273,7 +273,7 @@ extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
  */
 extern ModifyGraphPath *create_modifygraph_path(PlannerInfo *root,
 												RelOptInfo *rel, bool canSetTag, GraphWriteOp operation,
-												bool last, bool detach, Path *subpath, List *resultRel,
-												List *pattern, List *exprs, List *sets);
+												bool last, bool detach, Path *subpath, List *pattern,
+												List *targets, List *exprs, List *sets);
 
 #endif   /* PATHNODE_H */
