@@ -351,6 +351,7 @@ typedef struct GraphWriteStats
 	uint32		insertEdge;
 	uint32		deleteVertex;
 	uint32		deleteEdge;
+	uint32		updateProperty;
 } GraphWriteStats;
 
 /* ----------------
@@ -1630,7 +1631,8 @@ struct CustomExecMethods;
 typedef struct CustomScanState
 {
 	ScanState	ss;
-	uint32		flags;			/* mask of CUSTOMPATH_* flags, see relation.h */
+	uint32		flags;			/* mask of CUSTOMPATH_* flags, see
+								 * nodes/extensible.h */
 	List	   *custom_ps;		/* list of child PlanState nodes, if any */
 	Size		pscan_len;		/* size of parallel coordination information */
 	const struct CustomExecMethods *methods;
@@ -1668,6 +1670,7 @@ typedef struct NestLoopState
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
 	TupleTableSlot *nl_NullInnerTupleSlot;
+	Snapshot	nl_MergeMatchSnapshot;
 } NestLoopState;
 
 /* ----------------
@@ -2093,6 +2096,8 @@ typedef struct ModifyGraphState
 	List	   *pattern;		/* graph pattern (list of paths) for CREATE
 								   with `es_prop_map` */
 	List	   *exprs;			/* expression state list for DELETE */
+	List	   *sets;			/* list of GraphSetProp's for SET/REMOVE */
+	Node	   *mergepattern;	/* graph pattern to create for MERGE */
 } ModifyGraphState;
 
 #endif   /* EXECNODES_H */

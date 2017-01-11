@@ -1035,6 +1035,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					pname = "Graph Delete";
 					operation = "Delete";
 					break;
+				case GWROP_SET:
+					pname = "Graph Set";
+					operation = "Set";
+					break;
+				case GWROP_MERGE:
+					pname = "Graph Merge";
+					operation = "Merge";
+					break;
 				default:
 					pname = "Graph ???";
 					operation = "???";
@@ -1165,6 +1173,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						break;
 					case JOIN_ANTI:
 						jointype = "Anti";
+						break;
+					case JOIN_CYPHER_MERGE:
+						jointype = "CypherMerge";
 						break;
 					default:
 						jointype = "???";
