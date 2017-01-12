@@ -591,6 +591,7 @@ _outCteScan(StringInfo str, const CteScan *node)
 
 	WRITE_INT_FIELD(ctePlanId);
 	WRITE_INT_FIELD(cteParam);
+	WRITE_INT_FIELD(cteStop);
 }
 
 static void
@@ -2813,6 +2814,7 @@ _outCommonTableExpr(StringInfo str, const CommonTableExpr *node)
 	WRITE_NODE_FIELD(ctecoltypmods);
 	WRITE_NODE_FIELD(ctecolcollations);
 	WRITE_INT_FIELD(maxdepth);
+	WRITE_INT_FIELD(ctestop);
 }
 
 static void
