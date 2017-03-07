@@ -1483,7 +1483,6 @@ typedef struct ModifyGraphPath
 	List	   *targets;		/* relation Oid's of target labels */
 	List	   *exprs;			/* expression list for DELETE */
 	List	   *sets;			/* list of GraphSetProp's for SET/REMOVE */
-	Node	   *mergepath;		/* graph path for MERGE */
 } ModifyGraphPath;
 
 
