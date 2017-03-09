@@ -625,7 +625,6 @@ typedef struct NestLoopParam
 	Var		   *paramval;		/* outer-relation Var to assign to Param */
 } NestLoopParam;
 
-/* XXX: inheritance ? */
 typedef struct NestLoopVLE
 {
 	NestLoop	nl;
