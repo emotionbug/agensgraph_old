@@ -223,7 +223,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob->lastPlanNodeId = 0;
 	glob->transientPlan = false;
 	glob->dependsOnRole = false;
-	glob->nVlePaths = 0;
+	glob->vlePathRelationOids = NIL;
 
 	/*
 	 * Assess whether it's feasible to use parallel mode for this query. We
@@ -420,7 +420,8 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->relationOids = glob->relationOids;
 	result->invalItems = glob->invalItems;
 	result->nParamExec = glob->nParamExec;
-	result->nVlePaths = glob->nVlePaths;
+	result->nVlePaths = list_length(glob->vlePathRelationOids);
+	list_free(glob->vlePathRelationOids);
 
 	return result;
 }
