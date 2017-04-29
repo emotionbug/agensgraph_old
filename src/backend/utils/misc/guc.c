@@ -1540,6 +1540,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"case_sensitive_ident", PGC_USERSET, COMPAT_OPTIONS_CLIENT,
+			gettext_noop("Use case-sensitive identifiers."),
+			NULL
+		},
+		&case_sensitive_ident,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"synchronize_seqscans", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("Enable synchronized sequential scans."),
 			NULL
