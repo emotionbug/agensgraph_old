@@ -2668,6 +2668,7 @@ finalize_plan(PlannerInfo *root, Plan *plan, Bitmapset *valid_params,
 		case T_Gather:
 		case T_SetOp:
 		case T_Group:
+		case T_Eager:
 			break;
 
 		case T_ModifyGraph:
