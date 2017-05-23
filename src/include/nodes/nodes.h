@@ -84,6 +84,7 @@ typedef enum NodeTag
     /* Cypher Clause */
 	T_Eager,
 	T_ModifyGraph,
+	T_Dijkstra,
 	/* these aren't subclasses of Plan: */
 	T_NestLoopParam,
 	T_PlanRowMark,
@@ -136,6 +137,7 @@ typedef enum NodeTag
 	T_LimitState,
     /* Cypher Clause */
     T_ModifyGraphState,
+	T_DijkstraState,
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)
@@ -273,6 +275,7 @@ typedef enum NodeTag
 	T_LimitPath,
 	T_EagerPath,
 	T_ModifyGraphPath,
+	T_DijkstraPath,
 	/* these aren't subclasses of Path: */
 	T_EquivalenceClass,
 	T_EquivalenceMember,
