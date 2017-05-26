@@ -279,7 +279,8 @@ extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 /*
  * For cypher clause
  */
-extern EagerPath *create_eager_path(RelOptInfo *rel, Path *subpath);
+extern EagerPath *create_eager_path(RelOptInfo *rel, GraphWriteOp operation,
+									Path *subpath);
 extern ModifyGraphPath *create_modifygraph_path(PlannerInfo *root,
 												RelOptInfo *rel, bool canSetTag,
 												GraphWriteOp operation, bool last, bool detach,
