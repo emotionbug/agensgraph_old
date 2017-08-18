@@ -3412,12 +3412,6 @@ typedef struct CypherSetProp
  * Cypher Query Language
  */
 
-typedef struct CypherMap
-{
-	NodeTag		type;
-	List	   *keyvals;
-} CypherMap;
-
 typedef struct CypherList
 {
 	NodeTag		type;

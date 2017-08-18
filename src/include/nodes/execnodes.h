@@ -1050,6 +1050,12 @@ typedef struct EdgeRefRowsState
 	ArrayMetaState iter_meta;
 } EdgeRefRowsState;
 
+typedef struct CypherMapExprState
+{
+	ExprState	xprstate;
+	List	   *keyvals;
+} CypherMapExprState;
+
 /* ----------------------------------------------------------------
  *				 Executor State Trees
  *
