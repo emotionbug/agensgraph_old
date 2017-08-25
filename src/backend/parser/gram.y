@@ -15622,10 +15622,19 @@ cypher_expr:
 					ind->lidx = NULL;
 					ind->uidx = $3;
 
-					n = makeNode(A_Indirection);
-					n->arg = $1;
-					n->indirection = list_make1(ind);
-					$$ = (Node *) n;
+					if (IsA($1, A_Indirection))
+					{
+						n = (A_Indirection *) $1;
+						n->indirection = lappend(n->indirection, ind);
+						$$ = $1;
+					}
+					else
+					{
+						n = makeNode(A_Indirection);
+						n->arg = $1;
+						n->indirection = list_make1(ind);
+						$$ = (Node *) n;
+					}
 				}
 			| cypher_expr '[' cypher_expr_opt DOT_DOT cypher_expr_opt ']'
 				{
@@ -15637,10 +15646,19 @@ cypher_expr:
 					ind->lidx = $3;
 					ind->uidx = $5;
 
-					n = makeNode(A_Indirection);
-					n->arg = $1;
-					n->indirection = list_make1(ind);
-					$$ = (Node *) n;
+					if (IsA($1, A_Indirection))
+					{
+						n = (A_Indirection *) $1;
+						n->indirection = lappend(n->indirection, ind);
+						$$ = $1;
+					}
+					else
+					{
+						n = makeNode(A_Indirection);
+						n->arg = $1;
+						n->indirection = list_make1(ind);
+						$$ = (Node *) n;
+					}
 				}
 			| cypher_expr IS NULL_P							%prec IS
 				{
@@ -15668,10 +15686,19 @@ cypher_expr:
 				{
 					A_Indirection *n;
 
-					n = makeNode(A_Indirection);
-					n->arg = $1;
-					n->indirection = list_make1($3);
-					$$ = (Node *) n;
+					if (IsA($1, A_Indirection))
+					{
+						n = (A_Indirection *) $1;
+						n->indirection = lappend(n->indirection, $3);
+						$$ = $1;
+					}
+					else
+					{
+						n = makeNode(A_Indirection);
+						n->arg = $1;
+						n->indirection = list_make1($3);
+						$$ = (Node *) n;
+					}
 				}
 			| cypher_expr_atom
 		;
