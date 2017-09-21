@@ -494,8 +494,6 @@ typedef enum NodeTag
 	T_RoleSpec,
 
 	/* TAGS FOR CYPHER CLAUSES */
-	T_JsonObject,
-	T_JsonKeyVal,
 	T_CypherGenericExpr,
 	T_CypherSubPattern,
 	T_CypherClause,
