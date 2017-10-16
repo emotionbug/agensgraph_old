@@ -284,7 +284,7 @@ extern EagerPath *create_eager_path(RelOptInfo *rel, GraphWriteOp operation,
 extern ModifyGraphPath *create_modifygraph_path(PlannerInfo *root,
 												RelOptInfo *rel, bool canSetTag,
 												GraphWriteOp operation, bool last, bool detach,
-												Path *subpath, List *pattern, List *targets,
-												List *exprs, List *sets);
+												bool eager, Path *subpath, List *pattern,
+												List *targets, List *exprs, List *sets);
 
 #endif   /* PATHNODE_H */
