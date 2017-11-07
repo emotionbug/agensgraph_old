@@ -219,7 +219,6 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateConstraintStmt:
 		case T_DropConstraintStmt:
 		case T_CreatePropertyIndexStmt:
-		case T_DropPropertyIndexStmt:
 			PreventCommandIfReadOnly(CreateCommandTag(parsetree));
 			PreventCommandIfParallelMode(CreateCommandTag(parsetree));
 			break;
@@ -1669,26 +1668,6 @@ ProcessUtilitySlow(Node *parsetree,
 				}
 				break;
 
-			case T_DropPropertyIndexStmt:
-				{
-					Node *stmt;
-
-					/*
-					 * Check to possible to drop the property index and
-					 * make DropStmt from DropPropertyIndexStmt
-					 */
-					stmt = (Node *) transformDropPropertyIndex(
-										(DropPropertyIndexStmt *) parsetree);
-
-					ProcessUtility(stmt,
-								   queryString,
-								   PROCESS_UTILITY_SUBCOMMAND,
-								   params,
-								   None_Receiver,
-								   NULL);
-				}
-				break;
-
 			default:
 				elog(ERROR, "unrecognized node type: %d",
 					 (int) nodeTag(parsetree));
@@ -1729,6 +1708,28 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 {
 	switch (stmt->removeType)
 	{
+		case OBJECT_PROPERTY_INDEX:
+			{
+				char	   *graphname = get_graph_path(true);
+				ListCell   *lc;
+
+				Assert(stmt->concurrent == false);
+
+				/* set graph path */
+				foreach(lc, stmt->objects)
+				{
+					List	   *object = lfirst(lc);
+
+					if (list_length(object) == 1)
+						object = lcons(makeString(graphname), object);
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("improper property index name")));
+				}
+			}
+			/* fail through */
+
 		case OBJECT_INDEX:
 			if (stmt->concurrent)
 				PreventTransactionChain(isTopLevel,
@@ -2001,6 +2002,9 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_POLICY:
 			tag = "ALTER POLICY";
 			break;
+		case OBJECT_PROPERTY_INDEX:
+			tag = "ALTER PROPERTY INDEX";
+			break;
 		case OBJECT_ROLE:
 			tag = "ALTER ROLE";
 			break;
@@ -2241,10 +2245,6 @@ CreateCommandTag(Node *parsetree)
 			tag = "CREATE PROPERTY INDEX";
 			break;
 
-		case T_DropPropertyIndexStmt:
-			tag = "DROP PROPERTY INDEX";
-			break;
-
 		case T_CreateTableSpaceStmt:
 			tag = "CREATE TABLESPACE";
 			break;
@@ -2322,6 +2322,9 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_INDEX:
 					tag = "DROP INDEX";
+					break;
+				case OBJECT_PROPERTY_INDEX:
+					tag = "DROP PROPERTY INDEX";
 					break;
 				case OBJECT_TYPE:
 					tag = "DROP TYPE";
@@ -3005,7 +3008,6 @@ GetCommandLogLevel(Node *parsetree)
 		case T_CreateConstraintStmt:
 		case T_DropConstraintStmt:
 		case T_CreatePropertyIndexStmt:
-		case T_DropPropertyIndexStmt:
 			lev = LOGSTMT_DDL;
 			break;
 
