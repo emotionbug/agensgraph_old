@@ -32,7 +32,9 @@ extern IndexStmt *generateClonedIndexStmt(RangeVar *heapRel,
 										  const AttrNumber *attmap, int attmap_length,
 										  Oid *constraintOid);
 
-extern List *transformCreateGraphStmt(CreateGraphStmt *stmt);
+extern CreateSeqStmt *makeCreateDefaultAgLabelSeqStmt(char *schemaname);
+extern CreateLabelStmt *makeCreateDefaultAgVertexLabelStmt(char *schemaname,
+														   LabelKind labelKind);
 extern List *transformCreateLabelStmt(CreateLabelStmt *labelStmt,
 									  const char *queryString);
 extern char getLabelKind(char *labname, Oid graphid);

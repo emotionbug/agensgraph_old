@@ -208,3 +208,35 @@ binary_upgrade_set_missing_value(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
+
+Datum
+binary_upgrade_set_next_ag_graph_oid(PG_FUNCTION_ARGS)
+{
+	Oid			graphoid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_ag_graph_oid = graphoid;
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_next_ag_graph_label_oid(PG_FUNCTION_ARGS)
+{
+	Oid			sequence_oid = PG_GETARG_OID(0);
+	Oid			sequence_type_oid = PG_GETARG_OID(1);
+	Oid			vlabel_oid = PG_GETARG_OID(2);
+	Oid			vlabel_type_oid = PG_GETARG_OID(3);
+	Oid			elabel_oid = PG_GETARG_OID(4);
+	Oid			elabel_type_oid = PG_GETARG_OID(5);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_ag_graph_seq_oid = sequence_oid;
+	binary_upgrade_next_ag_graph_seq_type_oid = sequence_type_oid;
+	binary_upgrade_next_ag_graph_vlabel_oid = vlabel_oid;
+	binary_upgrade_next_ag_graph_vlabel_type_oid = vlabel_type_oid;
+	binary_upgrade_next_ag_graph_elabel_oid = elabel_oid;
+	binary_upgrade_next_ag_graph_elabel_type_oid = elabel_type_oid;
+
+	PG_RETURN_VOID();
+}

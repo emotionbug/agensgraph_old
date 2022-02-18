@@ -4118,21 +4118,14 @@ transformPartitionBoundValue(ParseState *pstate, Node *val,
 	return (Const *) value;
 }
 
-
 /*
- * transformCreateGraphStmt - analyzes the CREATE GRAPH statement
- *
- * See transformCreateSchemaStmt
+ * CREATE BASE Sequence Statement
  */
-List *
-transformCreateGraphStmt(CreateGraphStmt *stmt)
+CreateSeqStmt *
+makeCreateDefaultAgLabelSeqStmt(char *schemaname)
 {
-	CreateSeqStmt *labseq;
-	CreateLabelStmt	*vertex;
-	CreateLabelStmt	*edge;
-
-	labseq = makeNode(CreateSeqStmt);
-	labseq->sequence = makeRangeVar(stmt->graphname, AG_LABEL_SEQ, -1);
+	CreateSeqStmt *labseq = makeNode(CreateSeqStmt);
+	labseq->sequence = makeRangeVar(schemaname, AG_LABEL_SEQ, -1);
 	labseq->options = list_make2(makeDefElem("maxvalue",
 											 (Node *) makeInteger(GRAPHID_LABID_MAX),
 											 -1),
@@ -4141,19 +4134,24 @@ transformCreateGraphStmt(CreateGraphStmt *stmt)
 											 -1));
 	labseq->ownerId = InvalidOid;
 	labseq->if_not_exists = false;
-
-	vertex = makeNode(CreateLabelStmt);
-	vertex->labelKind = LABEL_VERTEX;
-	vertex->relation = makeRangeVar(stmt->graphname, AG_VERTEX, -1);
-	vertex->inhRelations = NIL;
-
-	edge = makeNode(CreateLabelStmt);
-	edge->labelKind = LABEL_EDGE;
-	edge->relation = makeRangeVar(stmt->graphname, AG_EDGE, -1);
-	edge->inhRelations = NIL;
-
-	return list_make3(labseq, vertex, edge);
+	return labseq;
 }
+
+/*
+ * CREATE BASE VLABEL Statement
+ */
+CreateLabelStmt *
+makeCreateDefaultAgVertexLabelStmt(char *schemaname, LabelKind labelKind)
+{
+	CreateLabelStmt *vertex = makeNode(CreateLabelStmt);
+	vertex->labelKind = labelKind;
+	vertex->relation = makeRangeVar(schemaname,
+									labelKind == LABEL_VERTEX ? AG_VERTEX : AG_EDGE,
+									-1);
+	vertex->inhRelations = NIL;
+	return vertex;
+}
+
 
 /*
  * transformCreateLabelStmt - parse analysis for CREATE VLABEL/ELABEL

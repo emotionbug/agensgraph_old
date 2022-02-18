@@ -4915,6 +4915,7 @@ _copyCreateGraphStmt(const CreateGraphStmt *from)
 	COPY_STRING_FIELD(graphname);
 	COPY_NODE_FIELD(authrole);
 	COPY_SCALAR_FIELD(if_not_exists);
+	COPY_SCALAR_FIELD(create_graph_kind);
 
 	return newnode;
 }

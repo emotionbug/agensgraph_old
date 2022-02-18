@@ -67,6 +67,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
+#include "ag_const.h"
 
 
 typedef struct
@@ -300,12 +301,32 @@ static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(TableInfo *tbinfo);
 
-static void insertGraphCatalog(Archive *fout);
+/* AgensGraph Dump methods */
+static Oid binary_upgrade_get_next_ag_graph_sequence_oid(Archive *fout,
+														 PQExpBuffer upgrade_buffer,
+														 Oid graph_oid);
+static void binary_upgrade_set_next_ag_graph_oid(Archive *fout,
+												 PQExpBuffer upgrade_buffer,
+												 Oid ag_graph_oid);
+static void binary_upgrade_set_next_ag_graph_label_oid(Archive *fout,
+													   PQExpBuffer upgrade_buffer,
+													   Oid ag_graph_sequence_oid,
+													   Oid ag_vertex_oid,
+													   Oid ag_edge_oid);
+
+static void createGraphSchema(Archive *fout);
+static void dumpGraph(Archive *fout);
+static void dumpGraphCatalog(Archive *fout);
+static void dumpGraphCatalogEntry(Archive *fout, char *g_oid, char *graphname);
 static void setGraphPath(PQExpBuffer q, char *gname);
 static void dumpDatabaseGraphPath(Archive *fout);
 static void makeAlterGraphPathConfigCommand(Archive *fout,PGconn *conn,
 											const char *arrayitem,
 											const char *name);
+static void dumpGraphData(Archive *fout);
+static void dumpVLabelData(Archive *fout, char *graph_name, Oid graph_oid);
+static void dumpELabelData(Archive *fout, char *graph_name, Oid graph_oid);
+
 
 int
 main(int argc, char **argv)
@@ -910,6 +931,9 @@ main(int argc, char **argv)
 	/* The database items are always next, unless we don't want them at all */
 	if (dopt.outputCreateDB)
 		dumpDatabase(fout);
+
+	/* Dump Graph schema */
+	createGraphSchema(fout);
 
 	/* Now the rearrangeable objects. */
 	for (i = 0; i < numObjs; i++)
@@ -4566,7 +4590,8 @@ getNamespaces(Archive *fout, int *numNamespaces)
 						  "LEFT JOIN pg_init_privs pip "
 						  "ON (n.oid = pip.objoid "
 						  "AND pip.classoid = 'pg_namespace'::regclass "
-						  "AND pip.objsubid = 0",
+						  "AND pip.objsubid = 0"
+						  "AND n.oid NOT IN (SELECT nspid FROM pg_catalog.ag_graph) ",
 						  username_subquery,
 						  acl_subquery->data,
 						  racl_subquery->data,
@@ -4574,6 +4599,7 @@ getNamespaces(Archive *fout, int *numNamespaces)
 						  init_racl_subquery->data);
 
 		appendPQExpBuffer(query, ") ");
+		appendPQExpBuffer(query, " WHERE n.oid NOT IN (SELECT nspid FROM pg_catalog.ag_graph) ");
 
 		destroyPQExpBuffer(acl_subquery);
 		destroyPQExpBuffer(racl_subquery);
@@ -4821,7 +4847,8 @@ getTypes(Archive *fout, int *numTypes)
 						  "LEFT JOIN pg_init_privs pip ON "
 						  "(t.oid = pip.objoid "
 						  "AND pip.classoid = 'pg_type'::regclass "
-						  "AND pip.objsubid = 0) ",
+						  "AND pip.objsubid = 0) "
+						  "WHERE t.typnamespace NOT IN (SELECT nspid FROM pg_catalog.ag_graph) ",
 						  acl_subquery->data,
 						  racl_subquery->data,
 						  initacl_subquery->data,
@@ -6073,6 +6100,7 @@ getTables(Archive *fout, int *numTables)
 						  "AND pip.classoid = 'pg_class'::regclass "
 						  "AND pip.objsubid = 0) "
 						  "WHERE c.relkind in ('%c', '%c', '%c', '%c', '%c', '%c', '%c') "
+						  "AND c.relnamespace NOT IN (SELECT nspid FROM pg_catalog.ag_graph) "
 						  "ORDER BY c.oid",
 						  acl_subquery->data,
 						  racl_subquery->data,
@@ -9960,8 +9988,8 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpSubscription(fout, (SubscriptionInfo *) dobj);
 			break;
 		case DO_PRE_DATA_BOUNDARY:
-			/* Restore ag_label after all labels are restored */
-			insertGraphCatalog(fout);
+			/* Restore ag_labels and graph data */
+			dumpGraph(fout);
 			break;
 		case DO_POST_DATA_BOUNDARY:
 			/* never dumped, nothing to do */
@@ -18487,6 +18515,140 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 		pg_log_warning("could not parse reloptions array");
 }
 
+static Oid
+binary_upgrade_get_type_oid(Archive *fout,
+							Oid pg_rel_oid)
+{
+	PQExpBuffer upgrade_query = createPQExpBuffer();
+	PGresult   *upgrade_res;
+	Oid			pg_type_oid;
+
+	/*
+	 * We only support old >= 8.3 for binary upgrades.
+	 *
+	 * We purposefully ignore toast OIDs for partitioned tables; the reason is
+	 * that versions 10 and 11 have them, but 12 does not, so emitting them
+	 * causes the upgrade to fail.
+	 */
+	appendPQExpBuffer(upgrade_query,
+					  "SELECT c.reltype AS crel, t.reltype AS trel "
+					  "FROM pg_catalog.pg_class c "
+					  "LEFT JOIN pg_catalog.pg_class t ON "
+					  "  (c.reltoastrelid = t.oid AND c.relkind <> '%c') "
+					  "WHERE c.oid = '%u'::pg_catalog.oid;",
+					  RELKIND_PARTITIONED_TABLE, pg_rel_oid);
+
+	upgrade_res = ExecuteSqlQueryForSingleRow(fout, upgrade_query->data);
+
+	pg_type_oid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "crel")));
+
+	PQclear(upgrade_res);
+	destroyPQExpBuffer(upgrade_query);
+
+	return pg_type_oid;
+}
+
+
+static Oid
+binary_upgrade_get_next_ag_graph_sequence_oid(Archive *fout,
+											  PQExpBuffer upgrade_buffer,
+											  Oid graph_oid)
+{
+	PQExpBuffer upgrade_query = createPQExpBuffer();
+	PGresult   *upgrade_res;
+	Oid 		ag_label_seq_oid;
+
+	appendPQExpBuffer(upgrade_query,
+					  "SELECT c.oid "
+					  "FROM pg_catalog.pg_class c "
+					  "LEFT JOIN pg_catalog.ag_graph a on "
+					  "(c.relnamespace = a.nspid) "
+					  "WHERE c.relkind = '%c' "
+					  "AND a.oid = '%u'::oid "
+					  "AND c.relname =",
+					  RELKIND_SEQUENCE,
+					  graph_oid);
+	appendStringLiteralAH(upgrade_query, AG_LABEL_SEQ, fout);
+	upgrade_res = ExecuteSqlQueryForSingleRow(fout, upgrade_query->data);
+
+	ag_label_seq_oid = atooid(PQgetvalue(upgrade_res, 0, 0));
+
+//	binary_upgrade_set_type_oids_by_rel_oid(fout, upgrade_buffer,
+//											ag_label_seq_oid);
+//
+	PQclear(upgrade_res);
+	destroyPQExpBuffer(upgrade_query);
+	return ag_label_seq_oid;
+}
+
+static Oid
+binary_upgrade_get_next_ag_graph_label_oid(Archive *fout,
+											  const char label_kind,
+											  Oid graph_oid)
+{
+	PQExpBuffer upgrade_query = createPQExpBuffer();
+	PGresult   *upgrade_res;
+	Oid 		ag_label_oid;
+
+	appendPQExpBuffer(upgrade_query,
+					  "SELECT l.relid "
+					  "FROM pg_catalog.ag_label l , pg_catalog.ag_graph g "
+					  "WHERE l.labkind = '%c' AND l.labname = ",
+					  label_kind
+	);
+	appendStringLiteralAH(upgrade_query,
+						  label_kind == LABEL_KIND_VERTEX ? AG_VERTEX : AG_EDGE,
+						  fout);
+	appendPQExpBuffer(upgrade_query,
+					  "     AND l.graphid = '%u'::oid AND l.graphid = g.oid "
+					  "ORDER BY l.labid;",
+					  graph_oid);
+
+	upgrade_res = ExecuteSqlQueryForSingleRow(fout, upgrade_query->data);
+	ag_label_oid = atooid(PQgetvalue(upgrade_res, 0, 0));
+
+	PQclear(upgrade_res);
+	destroyPQExpBuffer(upgrade_query);
+	return ag_label_oid;
+}
+
+static void
+binary_upgrade_set_next_ag_graph_oid(Archive *fout,
+									 PQExpBuffer upgrade_buffer,
+									 Oid ag_graph_oid)
+{
+	appendPQExpBufferStr(upgrade_buffer,
+						 "\n-- For binary upgrade, must preserve ag_graph oid\n");
+
+	appendPQExpBuffer(upgrade_buffer,
+					  "SELECT pg_catalog.binary_upgrade_set_next_ag_graph_oid('%u'::pg_catalog.oid);\n",
+					  ag_graph_oid);
+}
+
+static void
+binary_upgrade_set_next_ag_graph_label_oid(Archive *fout,
+										   PQExpBuffer upgrade_buffer,
+										   Oid ag_graph_sequence_oid,
+										   Oid ag_vertex_oid,
+										   Oid ag_edge_oid)
+{
+	appendPQExpBufferStr(upgrade_buffer,
+						 "\n-- For binary upgrade, must preserve ag_graph oid\n");
+
+	appendPQExpBuffer(upgrade_buffer,
+					  "SELECT pg_catalog.binary_upgrade_set_next_ag_graph_label_oid("
+					  "'%u'::pg_catalog.oid, "
+					  "'%u'::pg_catalog.oid, "
+					  "'%u'::pg_catalog.oid, "
+					  "'%u'::pg_catalog.oid, "
+					  "'%u'::pg_catalog.oid, "
+					  "'%u'::pg_catalog.oid"
+					  ");\n",
+					  ag_graph_sequence_oid, binary_upgrade_get_type_oid(fout, ag_graph_sequence_oid),
+					  ag_vertex_oid, binary_upgrade_get_type_oid(fout, ag_vertex_oid),
+					  ag_edge_oid, binary_upgrade_get_type_oid(fout, ag_edge_oid));
+}
+
 /*
  * Creates the ALTER DATABASE command that will setup the GRAPH_PATH
  * configuration option. See makeAlterConfigCommand
@@ -18564,105 +18726,348 @@ dumpDatabaseGraphPath(Archive *fout)
 	destroyPQExpBuffer(buf);
 }
 
+/* 
+ * Create Graphs
+ *
+*/
+static void
+createGraphSchema(Archive *fout)
+{
+	DumpOptions *dopt = fout->dopt;
+	PQExpBuffer buf;
+	PGresult   *res;
+	int			ntuples,
+			tuple;
+	buf = createPQExpBuffer();
+
+	/* restore ag_graph */
+	res = ExecuteSqlQuery(fout, "SELECT graphname, oid FROM pg_catalog.ag_graph",
+						  PGRES_TUPLES_OK);
+	ntuples = PQntuples(res);
+	for (tuple = 0; tuple < ntuples; tuple++)
+	{
+		const char *graph_name = fmtId(PQgetvalue(res, tuple, 0));
+		Oid graph_oid = atooid(PQgetvalue(res, tuple, 1));
+		if (dopt->binary_upgrade)
+		{
+			Oid ag_graph_seq_oid;
+			Oid ag_vertex_oid, ag_edge_oid;
+			binary_upgrade_set_next_ag_graph_oid(fout, buf,
+												 graph_oid);
+			ag_graph_seq_oid = binary_upgrade_get_next_ag_graph_sequence_oid(fout, buf, graph_oid);
+			ag_vertex_oid = binary_upgrade_get_next_ag_graph_label_oid(fout, LABEL_KIND_VERTEX, graph_oid);
+			ag_edge_oid = binary_upgrade_get_next_ag_graph_label_oid(fout, LABEL_KIND_EDGE, graph_oid);
+			binary_upgrade_set_next_ag_graph_label_oid(fout, buf, ag_graph_seq_oid, ag_vertex_oid, ag_edge_oid);
+		}
+		appendPQExpBuffer(buf,
+						  "CREATE GRAPH %s SCHEMA;\n",
+						  graph_name);
+		appendPQExpBuffer(buf,
+						  "CREATE GRAPH %s SEQUENCE;\n",
+						  graph_name);
+	}
+	PQclear(res);
+	ArchiveEntry(fout, nilCatalogId, createDumpId(),
+				 ARCHIVE_OPTS(.tag = "Graph Schema",
+							  .description = "GRAPH",
+							  .section = SECTION_DATA,
+							  .createStmt = buf->data));
+
+	destroyPQExpBuffer(buf);
+}
+
+/* 
+ * Dump Graph
+ *
+*/
+static void
+dumpGraph(Archive *fout)
+{
+	dumpGraphCatalog(fout);
+	dumpGraphData(fout);
+}
+
+/* 
+ * Dump Graph Catalogs
+ *
+*/
+static void
+dumpGraphCatalog(Archive *fout)
+{
+	PGresult   *res;
+	int			ntuples,
+			tuple;
+
+	res = ExecuteSqlQuery(fout, "SELECT oid, graphname FROM pg_catalog.ag_graph ORDER BY oid",
+						  PGRES_TUPLES_OK);
+	ntuples = PQntuples(res);
+	for (tuple = 0; tuple < ntuples; tuple++)
+	{
+		/* restore ag_labels */
+		dumpGraphCatalogEntry(fout, PQgetvalue(res, tuple, 0), PQgetvalue(res, tuple, 1));
+	}
+	PQclear(res);
+}
+
 /*
- * insertGraphCatalog
+ * dumpGraphCatalogEntry
  *		insert into ag_graph & ag_label
  *		to make graph object from RDB object
  */
 static void
-insertGraphCatalog(Archive *fout)
+dumpGraphCatalogEntry(Archive *fout, char *g_oid, char *graphname)
 {
-	PQExpBuffer q;
+	PQExpBuffer q,
+			buf;
 	PGresult   *res;
 	int			ntuples;
 	int			tuple;
 
 	q = createPQExpBuffer();
+	appendPQExpBuffer(q ,
+					  "SELECT child.labname AS child, child.graphid as graphid, child.relid as relid, "
+					  "     child.labkind as labelkind, string_agg(parent.labname, ', ') AS parents, "
+					  "     c.relpersistence AS persistence, c.reloptions AS options, child.labid "
+					  "FROM pg_catalog.ag_label AS parent, "
+					  "     pg_catalog.ag_label AS child, "
+					  "     pg_catalog.pg_inherits AS inh, "
+					  "     pg_catalog.pg_class c "
+					  "WHERE child.relid = inh.inhrelid AND parent.relid = inh.inhparent "
+					  "     AND child.relid = c.oid "
+					  "     AND child.graphid = %s "
+					  "GROUP BY 1, 2, 3, 4, 6, 7, 8 "
+					  "ORDER BY 8;",
+					  g_oid);
 
-	/* restore ag_graph */
-	res = ExecuteSqlQuery(fout, "SELECT graphname FROM pg_catalog.ag_graph",
-						  PGRES_TUPLES_OK);
-	ntuples = PQntuples(res);
-	for (tuple = 0; tuple < ntuples; tuple++)
-	{
-		appendPQExpBuffer(q,
-						  "INSERT INTO pg_catalog.ag_graph\n"
-						  "(SELECT nspname, oid FROM pg_catalog.pg_namespace\n"
-						  "WHERE nspname = '%s');\n",
-						  PQgetvalue(res, tuple, 0));
-	}
-	PQclear(res);
-
-	/* restore dependency between pg_namespace and ag_graph */
-	appendPQExpBuffer(q,
-					  "\nINSERT INTO pg_catalog.pg_depend\n"
-					  "(SELECT %d, nspid, 0, %d, oid, 0, 'i'\n"
-					  "FROM pg_catalog.ag_graph);\n",
-					  NamespaceRelationId,
-					  GraphRelationId);
-
-	/* restore ag_label */
+	/* restore non-default ag_label */
 	res = ExecuteSqlQuery(fout,
-						  "SELECT l.labname, l.labid, l.labkind, g.graphname "
-						  "FROM pg_catalog.ag_graph g, pg_catalog.ag_label l "
-						  "WHERE g.oid = l.graphid",
+						  q->data,
 						  PGRES_TUPLES_OK);
+
+
+	buf = createPQExpBuffer();
+	appendPQExpBuffer(buf,"\nSET graph_path=%s;\n\n", graphname);
+
 	ntuples = PQntuples(res);
 	for (tuple = 0; tuple < ntuples; tuple++)
 	{
-		appendPQExpBuffer(q,
-						  "INSERT INTO pg_catalog.ag_label\n"
-						  "(SELECT c.relname, g.oid, %d, c.oid, '%s'\n"
-						  "FROM pg_catalog.ag_graph g\n"
-						  "JOIN pg_catalog.pg_namespace n ON n.oid = g.nspid\n"
-						  "JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid\n"
-						  "WHERE g.graphname = '%s' AND c.relname = '%s');\n",
-						  atoi(PQgetvalue(res, tuple, 1)),
-						  PQgetvalue(res, tuple, 2),
-						  PQgetvalue(res, tuple, 3),
-						  PQgetvalue(res, tuple, 0));
-	}
-	PQclear(res);
-
-	/* before v2.0.0 the catalog ag_graphmeta was not exist. */
-	if (fout->agVersion >= 20000)
-	{
-		res = ExecuteSqlQuery(fout,
-							  "SELECT g.graphname, m.edge, m.start, m.end, m.edgecount\n"
-							  "FROM pg_catalog.ag_graph g, pg_catalog.ag_graphmeta m\n"
-							  "WHERE g.oid = m.graph;\n",
-							  PGRES_TUPLES_OK);
-		ntuples = PQntuples(res);
-		for (tuple = 0; tuple < ntuples; tuple++)
+		appendPQExpBuffer(buf,
+						  "\nCREATE ");
+		/* Is unlogged */
+		if (strcmp(PQgetvalue(res, tuple, 5), "u") == 0 )
 		{
-			appendPQExpBuffer(q,
-							  "INSERT INTO pg_catalog.ag_graphmeta\n"
-							  "(SELECT oid, %d, %d, %d, %d\n"
-							  "FROM pg_catalog.ag_graph WHERE graphname = '%s');\n",
-							  atoi(PQgetvalue(res, tuple, 1)),
-							  atoi(PQgetvalue(res, tuple, 2)),
-							  atoi(PQgetvalue(res, tuple, 3)),
-							  atoi(PQgetvalue(res, tuple, 4)),
+			appendPQExpBuffer(buf,
+							  "UNLOGGED ");
+		}
+
+		/* VLABEL vs ELABEL */
+		if (strcmp(PQgetvalue(res, tuple, 3), "e") == 0)
+		{
+			appendPQExpBuffer(buf,
+							  "ELABEL %s ",
 							  PQgetvalue(res, tuple, 0));
 		}
-		PQclear(res);
-	}
+		else
+		{
+			appendPQExpBuffer(buf,
+							  "VLABEL %s ",
+							  PQgetvalue(res, tuple, 0));
+		}
 
-	/* restore dependency between pg_class and ag_label */
-	appendPQExpBuffer(q,
-					  "\nINSERT INTO pg_catalog.pg_depend\n"
-					  "(SELECT %d, relid, 0, %d, oid, 0, 'i'\n"
-					  "FROM pg_catalog.ag_label);\n",
-					  RelationRelationId,
-					  LabelRelationId);
+		/* INHERIT */
+		if (strcmp(PQgetvalue(res, tuple, 4), "ag_vertex") != 0 &&
+			strcmp(PQgetvalue(res, tuple, 4), "ag_edge") != 0)
+		{
+			appendPQExpBuffer(buf,
+							  "INHERITS (%s) ",
+							  PQgetvalue(res, tuple, 4));
+		}
+
+		/* Use options */
+		if (strcmp(PQgetvalue(res, tuple, 6), "") != 0 )
+		{
+			char *params = PQgetvalue(res, tuple, 6);
+			params[0] = '(';
+			params[strlen(params)-1] = ')';
+			appendPQExpBuffer(buf,
+							  "\nWITH %s",PQgetvalue(res, tuple, 6));
+		}
+
+		appendPQExpBuffer(buf,";\n");
+	}
+	PQclear(res);
 
 	ArchiveEntry(fout, nilCatalogId, createDumpId(),
-					ARCHIVE_OPTS(.tag = "Graph Catalog",
-								.description = "GRAPH",
-								.section = SECTION_DATA,
-								.createStmt = q->data));
+				 ARCHIVE_OPTS(.tag = "Graph LABEL",
+							  .namespace = graphname,
+							  .description = "GRAPH",
+							  .section = SECTION_DATA,
+							  .createStmt = buf->data));
 
 	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(buf);
+}
+
+static void dumpGraphData(Archive *fout)
+{
+	PGresult   *res;
+	int			ntuples,
+			tuple;
+
+	/* list ag_graph */
+	res = ExecuteSqlQuery(fout, "SELECT graphname, oid FROM pg_catalog.ag_graph",
+						  PGRES_TUPLES_OK);
+	ntuples = PQntuples(res);
+	for (tuple = 0; tuple < ntuples; tuple++)
+		dumpVLabelData(fout, PQgetvalue(res, tuple, 0), atooid(PQgetvalue(res, tuple, 1)));
+
+	for (tuple = 0; tuple < ntuples; tuple++)
+		dumpELabelData(fout, PQgetvalue(res, tuple, 0), atooid(PQgetvalue(res, tuple, 1)));
+
+	PQclear(res);
+}
+
+static char * replaceDoubleQuoteWithSingle(char * input)
+{
+	char *iter;
+	iter = input;
+	while (*iter)
+	{
+		if (*iter == '\"')
+			*iter = '\'';
+		iter++;
+	}
+	return input;
+}
+
+static void dumpVLabelData(Archive *fout, char *graph_name, Oid graph_oid)
+{
+	PQExpBuffer 	query,
+			vlabel;
+	PGresult   *res;
+	int			ntuples,
+			tuple;
+
+	query = createPQExpBuffer();
+	appendPQExpBuffer(query,
+					  "SELECT ag_label.labname as label, v.properties as value "
+					  "FROM %s as v, ag_label "
+					  "WHERE ag_label.labid::text = split_part(v.id::text, '.', 1) "
+					  "     AND ag_label.graphid = '%u'::oid "
+					  "ORDER BY v.id;",
+					  fmtQualifiedId(graph_name, AG_VERTEX), graph_oid);
+
+	/* restore vlabels */
+	res = ExecuteSqlQuery(fout,
+						  query->data,
+						  PGRES_TUPLES_OK);
+	ntuples = PQntuples(res);
+	vlabel = createPQExpBuffer();
+	appendPQExpBuffer(vlabel,"\nSET graph_path=%s;\n\n", graph_name);
+
+	for (tuple = 0; tuple < ntuples; tuple++)
+	{
+		appendPQExpBuffer(vlabel, "CREATE (");
+		if (strcmp(PQgetvalue(res, tuple, 0), "ag_vertex") != 0)
+		{
+			appendPQExpBuffer(vlabel,
+							  ":%s ",
+							  PQgetvalue(res, tuple, 0));
+		}
+		if (strcmp(PQgetvalue(res, tuple, 1), "{}") != 0)
+		{
+			char * properties = PQgetvalue(res, tuple, 1);
+			replaceDoubleQuoteWithSingle(properties);
+			appendPQExpBuffer(vlabel,
+							  "%s",
+							  properties);
+		}
+		appendPQExpBuffer(vlabel, ");\n");
+	}
+	PQclear(res);
+
+	ArchiveEntry(fout, nilCatalogId, createDumpId(),
+				 ARCHIVE_OPTS(.tag = "Vertex Data",
+							  .namespace = graph_name,
+							  .description = "GRAPH",
+							  .section = SECTION_DATA,
+							  .createStmt = vlabel->data));
+
+	destroyPQExpBuffer(query);
+	destroyPQExpBuffer(vlabel);
+
+}
+
+static void dumpELabelData(Archive *fout, char *graph_name, Oid graph_oid)
+{
+	PQExpBuffer 	query;
+	PGresult   	*res;
+	int			ntuples,
+			tuple;
+
+	query = createPQExpBuffer();
+	appendPQExpBuffer(query,
+					  "SELECT l.labname "
+					  "FROM pg_catalog.ag_label l , pg_catalog.ag_graph g "
+					  "WHERE l.labkind = '%c' AND l.labname != ",
+					  LABEL_KIND_EDGE);
+	appendStringLiteralAH(query, AG_EDGE, fout);
+	appendPQExpBuffer(query,
+					  "     AND l.graphid = g.oid AND g.oid = '%u'::oid "
+					  "ORDER BY l.labid;",
+					  graph_oid);
+
+	/* get list of edge labels */
+	res = ExecuteSqlQuery(fout,
+						  query->data,
+						  PGRES_TUPLES_OK);
+	ntuples = PQntuples(res);
+
+	for (tuple = 0; tuple < ntuples; tuple++)
+	{
+		PQExpBuffer		query2, edata_buf;
+		PGresult		*res2;
+		int				ntuples_d, tuple_d;
+		const char		*edge_name;
+
+		edata_buf = createPQExpBuffer();
+		edge_name = PQgetvalue(res, tuple, 0);
+		appendPQExpBuffer(edata_buf,"COPY %s (id, start, \"end\", properties) FROM stdin;\n",
+						  fmtQualifiedId(graph_name, edge_name));
+
+
+		query2 = createPQExpBuffer();
+		appendPQExpBuffer(query2,
+						  "SELECT id, start, \"end\", properties "
+						  "FROM %s;",
+						  fmtQualifiedId(graph_name, edge_name));
+		/* get list of edges with specific edge labels*/
+		res2 = ExecuteSqlQuery(fout,
+							   query2->data,
+							   PGRES_TUPLES_OK);
+		ntuples_d = PQntuples(res2);
+		for (tuple_d = 0; tuple_d < ntuples_d; tuple_d++)
+			appendPQExpBuffer(edata_buf,"%s\t%s\t%s\t%s\n",
+							  PQgetvalue(res2, tuple_d, 0), PQgetvalue(res2, tuple_d, 1),
+							  PQgetvalue(res2, tuple_d, 2), PQgetvalue(res2, tuple_d, 3));
+
+		appendPQExpBuffer(edata_buf, "\\.\n");
+
+		if (ntuples_d > 0 ) /* at least one entry is needed to dump table */
+			ArchiveEntry(fout, nilCatalogId, createDumpId(),
+						 ARCHIVE_OPTS(.tag = edge_name,
+									  .namespace = graph_name,
+									  .description = "GRAPH",
+									  .section = SECTION_DATA,
+									  .createStmt = edata_buf->data));
+
+		PQclear(res2);
+		destroyPQExpBuffer(query2);
+		destroyPQExpBuffer(edata_buf);
+	}
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
 }
 
 static void setGraphPath(PQExpBuffer q, char *gname)

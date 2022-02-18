@@ -2958,6 +2958,7 @@ _equalCreateGraphStmt(const CreateGraphStmt *a, const CreateGraphStmt *b)
 	COMPARE_STRING_FIELD(graphname);
 	COMPARE_NODE_FIELD(authrole);
 	COMPARE_SCALAR_FIELD(if_not_exists);
+	COMPARE_SCALAR_FIELD(create_graph_kind);
 
 	return true;
 }

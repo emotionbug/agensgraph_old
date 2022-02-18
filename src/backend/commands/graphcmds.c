@@ -42,6 +42,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "catalog/pg_inherits.h"
+#include "miscadmin.h"
+#include "catalog/binary_upgrade.h"
 
 static ObjectAddress DefineLabel(CreateStmt *stmt, char labkind,
 								 const char *queryString);
@@ -51,43 +53,74 @@ static void SetMaxStatisticsTarget(Oid laboid);
 
 static bool IsLabel(const char *label_name, Oid namespaceId);
 
+static void SimpleProcessUtility(Node *node, const char *queryString, int stmt_location, int stmt_len);
+
+/* Potentially set by pg_upgrade_support functions */
+Oid			binary_upgrade_next_ag_graph_seq_oid = InvalidOid;
+Oid			binary_upgrade_next_ag_graph_seq_type_oid = InvalidOid;
+Oid			binary_upgrade_next_ag_graph_vlabel_oid = InvalidOid;
+Oid			binary_upgrade_next_ag_graph_vlabel_type_oid = InvalidOid;
+Oid			binary_upgrade_next_ag_graph_elabel_oid = InvalidOid;
+Oid			binary_upgrade_next_ag_graph_elabel_type_oid = InvalidOid;
+
+static void
+SimpleProcessUtility(Node *node, const char *queryString, int stmt_location, int stmt_len)
+{
+	PlannedStmt *wrapper;
+
+	wrapper = makeNode(PlannedStmt);
+	wrapper->commandType = CMD_UTILITY;
+	wrapper->canSetTag = false;
+	wrapper->utilityStmt = node;
+	wrapper->stmt_location = stmt_location;
+	wrapper->stmt_len = stmt_len;
+
+	ProcessUtility(wrapper, queryString, PROCESS_UTILITY_SUBCOMMAND,
+				   NULL, NULL, None_Receiver, NULL);
+	CommandCounterIncrement();
+}
+
 /* See ProcessUtilitySlow() case T_CreateSchemaStmt */
 void
 CreateGraphCommand(CreateGraphStmt *stmt, const char *queryString,
 				   int stmt_location, int stmt_len)
 {
 	Oid			graphid;
-	List	   *parsetree_list;
-	ListCell   *parsetree_item;
+	CreateSeqStmt	*createSeqStmt;
+	CreateLabelStmt	*createVLabelStmt, *createELabelStmt;
 
-	graphid = GraphCreate(stmt, queryString, stmt_location, stmt_len);
-	if (!OidIsValid(graphid))
-		return;
-
-	CommandCounterIncrement();
-
-	parsetree_list = transformCreateGraphStmt(stmt);
-	foreach(parsetree_item, parsetree_list)
+	if (stmt->create_graph_kind == GCSK_ALL || stmt->create_graph_kind == GCSK_SCHEMA)
 	{
-		Node	   *stmt = lfirst(parsetree_item);
-		PlannedStmt *wrapper;
-
-		wrapper = makeNode(PlannedStmt);
-		wrapper->commandType = CMD_UTILITY;
-		wrapper->canSetTag = false;
-		wrapper->utilityStmt = stmt;
-		wrapper->stmt_location = stmt_location;
-		wrapper->stmt_len = stmt_len;
-
-		ProcessUtility(wrapper, queryString, PROCESS_UTILITY_SUBCOMMAND,
-					   NULL, NULL, None_Receiver, NULL);
-
+		graphid = GraphCreate(stmt, queryString, stmt_location, stmt_len);
+		if (!OidIsValid(graphid))
+			return;
 		CommandCounterIncrement();
 	}
 
-	if (graph_path == NULL || strcmp(graph_path, "") == 0)
-		SetConfigOption("graph_path", stmt->graphname,
-						PGC_USERSET, PGC_S_SESSION);
+	if (stmt->create_graph_kind == GCSK_ALL || stmt->create_graph_kind == GCSK_SEQUENCE)
+	{
+		createSeqStmt = makeCreateDefaultAgLabelSeqStmt(stmt->graphname);
+		SimpleProcessUtility((Node *) createSeqStmt, queryString, stmt_location, stmt_len);
+	}
+
+	if (stmt->create_graph_kind == GCSK_ALL || stmt->create_graph_kind == GCSK_VLABEL)
+	{
+		createVLabelStmt = makeCreateDefaultAgVertexLabelStmt(stmt->graphname, LABEL_VERTEX);
+		SimpleProcessUtility((Node *) createVLabelStmt, queryString, stmt_location, stmt_len);
+	}
+
+	if (stmt->create_graph_kind == GCSK_ALL || stmt->create_graph_kind == GCSK_ELABEL)
+	{
+		createELabelStmt = makeCreateDefaultAgVertexLabelStmt(stmt->graphname, LABEL_EDGE);
+		SimpleProcessUtility((Node *) createELabelStmt, queryString, stmt_location, stmt_len);
+	}
+
+	if (stmt->create_graph_kind == GCSK_ALL)
+	{
+		if (graph_path == NULL || strcmp(graph_path, "") == 0)
+			SetConfigOption("graph_path", stmt->graphname,
+							PGC_USERSET, PGC_S_SESSION);
+	}
 }
 
 void

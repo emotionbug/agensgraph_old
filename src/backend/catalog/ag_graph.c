@@ -7,7 +7,6 @@
  * IDENTIFICATION
  *	  src/backend/catalog/ag_graph.c
  */
-
 #include "postgres.h"
 
 #include "access/heapam.h"
@@ -23,13 +22,17 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "catalog/catalog.h"
+#include "miscadmin.h"
 
 /* a global variable for the GUC variable */
 char *graph_path = NULL;
 bool enableGraphDML = false;
+
+
+/* Potentially set by pg_upgrade_support functions */
+Oid			binary_upgrade_next_ag_graph_oid = InvalidOid;
 
 /* check_hook: validate new graph_path value */
 bool
@@ -148,9 +151,24 @@ GraphCreate(CreateGraphStmt *stmt, const char *queryString,
 	graphdesc = heap_open(GraphRelationId, RowExclusiveLock);
 	tupDesc = graphdesc->rd_att;
 
-	graphoid = values[Anum_ag_graph_oid - 1] = GetNewOidWithIndex(graphdesc,
-																  GraphOidIndexId,
-																  Anum_ag_graph_oid);
+	if (IsBinaryUpgrade)
+	{
+		if (!OidIsValid(binary_upgrade_next_ag_graph_oid))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("ag_graph OID value not set when in binary upgrade mode")));
+		}
+		graphoid = values[Anum_ag_graph_oid - 1] = binary_upgrade_next_ag_graph_oid;
+		binary_upgrade_next_ag_graph_oid = InvalidOid;
+	}
+	else
+	{
+		graphoid = GetNewOidWithIndex(graphdesc,
+									  GraphOidIndexId,
+									  Anum_ag_graph_oid);
+	}
+	values[Anum_ag_graph_oid - 1] = graphoid;
 	values[Anum_ag_graph_graphname - 1] = NameGetDatum(&gname);
 	values[Anum_ag_graph_nspid - 1] = ObjectIdGetDatum(schemaoid);
 

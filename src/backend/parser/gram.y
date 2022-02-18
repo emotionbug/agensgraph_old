@@ -15770,6 +15770,7 @@ CreateGraphStmt:
 					n->graphname = $3;
 					n->authrole = $5;
 					n->if_not_exists = false;
+					n->create_graph_kind = GCSK_ALL;
 					$$ = (Node *) n;
 				}
 			| CREATE GRAPH ColId
@@ -15778,6 +15779,7 @@ CreateGraphStmt:
 					n->graphname = $3;
 					n->authrole = NULL;
 					n->if_not_exists = false;
+					n->create_graph_kind = GCSK_ALL;
 					$$ = (Node *) n;
 				}
 			| CREATE GRAPH IF_P NOT EXISTS ColId AUTHORIZATION RoleSpec
@@ -15786,6 +15788,7 @@ CreateGraphStmt:
 					n->graphname = $6;
 					n->authrole = $8;
 					n->if_not_exists = true;
+					n->create_graph_kind = GCSK_ALL;
 					$$ = (Node *) n;
 				}
 			| CREATE GRAPH IF_P NOT EXISTS ColId
@@ -15794,6 +15797,43 @@ CreateGraphStmt:
 					n->graphname = $6;
 					n->authrole = NULL;
 					n->if_not_exists = true;
+					n->create_graph_kind = GCSK_ALL;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId SCHEMA
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->create_graph_kind = GCSK_SCHEMA;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId SEQUENCE
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->create_graph_kind = GCSK_SEQUENCE;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId VLABEL
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->create_graph_kind = GCSK_VLABEL;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId ELABEL
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->create_graph_kind = GCSK_ELABEL;
 					$$ = (Node *) n;
 				}
 		;

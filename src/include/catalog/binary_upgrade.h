@@ -27,4 +27,13 @@ extern PGDLLIMPORT Oid binary_upgrade_next_pg_authid_oid;
 
 extern PGDLLIMPORT bool binary_upgrade_record_init_privs;
 
+/* For agensgraph supports */
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_oid;
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_seq_oid;
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_seq_type_oid;
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_vlabel_oid;
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_vlabel_type_oid;
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_elabel_oid;
+extern PGDLLIMPORT Oid binary_upgrade_next_ag_graph_elabel_type_oid;
+
 #endif							/* BINARY_UPGRADE_H */

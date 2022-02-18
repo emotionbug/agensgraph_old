@@ -3571,14 +3571,24 @@ typedef struct DropSubscriptionStmt
 /****************************************************************************
  * Agens Graph related node structures
  ****************************************************************************/
+ 
+typedef enum CreateGraphStmtKind
+{
+	GCSK_ALL,
+	GCSK_SCHEMA,
+	GCSK_SEQUENCE,
+	GCSK_VLABEL,
+	GCSK_ELABEL
+} CreateGraphStmtKind;
 
 /* CREATE GRAPH ... */
 typedef struct CreateGraphStmt
 {
-	NodeTag		type;
-	char	   *graphname;		/* the name of the graph to create */
-	RoleSpec   *authrole;		/* the owner of the created graph */
-	bool		if_not_exists;	/* just do nothing if graph already exists? */
+	NodeTag					type;
+	char	   				*graphname;		/* the name of the graph to create */
+	RoleSpec   				*authrole;		/* the owner of the created graph */
+	bool					if_not_exists;	/* just do nothing if graph already exists? */
+	CreateGraphStmtKind		create_graph_kind;
 } CreateGraphStmt;
 
 typedef enum LabelKind
