@@ -52,6 +52,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "parser/parse_cypher_utils.h"
 
 #define CYPHER_SUBQUERY_ALIAS	"_"
 #define CYPHER_OPTMATCH_ALIAS	"_o"
@@ -2331,9 +2332,9 @@ genVLESubselect(ParseState *pstate, CypherRel *crel, bool out, bool pathout)
 	ResTarget  *curr;
 	Node	   *ids_col;
 	ResTarget  *ids;
-	Node       *next_col;
+	Node	   *next_col;
 	ResTarget  *next;
-	Node       *id_col;
+	Node	   *id_col;
 	ResTarget  *id;
 	List 	   *tlist;
 	Node	   *left;
@@ -2391,7 +2392,7 @@ genVLESubselect(ParseState *pstate, CypherRel *crel, bool out, bool pathout)
 
 	if (out)
 	{
-		Node       *edge_col;
+		Node	   *edge_col;
 		ResTarget  *edge;
 
 		edge_col = makeColumnRef(genQualifiedName(VLE_RIGHT_ALIAS,
@@ -2403,7 +2404,7 @@ genVLESubselect(ParseState *pstate, CypherRel *crel, bool out, bool pathout)
 
 	if (pathout)
 	{
-		Node       *vertex_col;
+		Node	   *vertex_col;
 		ResTarget  *vertex;
 
 		vertex_col = makeColumnRef(genQualifiedName(VLE_RIGHT_ALIAS,
@@ -3463,23 +3464,28 @@ transform_prop_constr_worker(Node *node, prop_constr_context *ctx)
 		}
 		else
 		{
-			CypherAccessExpr *a;
+			FuncExpr *a;
 			Node	   *lval;
 			Node	   *rval;
 			Oid			rvaltype;
 			int			rvalloc;
 			Expr	   *expr;
 
-			a = makeNode(CypherAccessExpr);
-			a->arg = (Expr *) ctx->prop_map;
-			a->path = copyObject(ctx->pathelems);
+			a = makeJsonbFuncAccessor(ctx->prop_map, copyObject(ctx->pathelems));
 			lval = (Node *) a;
 
 			rval = transformCypherExpr(ctx->pstate, v, EXPR_KIND_WHERE);
 			rvaltype = exprType(rval);
 			rvalloc = exprLocation(rval);
-			rval = coerce_expr(ctx->pstate, rval, rvaltype, JSONBOID, -1,
-							   COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+
+			if (rvaltype == UNKNOWNOID)
+			{
+				rval = coerce_expr(ctx->pstate, rval, rvaltype, JSONBOID, -1,
+								   COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+			} else {
+				lval = coerce_expr(ctx->pstate, (Node *) lval, JSONBOID, rvaltype, -1, COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+			}
+
 			if (rval == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -4524,7 +4530,7 @@ transformSetProp(ParseState *pstate, RangeTblEntry *rte, CypherSetProp *sp,
 			set = makeFuncCall(list_make1(makeString("jsonb_set")), NIL, -1);
 			set_prop = ParseFuncOrColumn(pstate, set->funcname,
 										 list_make4(prop_map, path, expr,
-                                                    makeBoolConst(true, false)),
+													makeBoolConst(true, false)),
 										 pstate->p_last_srf, set, false, -1);
 
 			/*

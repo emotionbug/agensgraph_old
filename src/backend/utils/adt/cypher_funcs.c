@@ -1284,3 +1284,68 @@ get_last_graph_write_stats(PG_FUNCTION_ARGS)
 
 	SRF_RETURN_DONE(funcctx);
 }
+
+Datum
+jsonb_slice(PG_FUNCTION_ARGS)
+{
+	Jsonb *j;
+	int idx;
+	int32 lidx, uidx;
+	bool lidxnull, uidxnull;
+	int jsonb_length;
+	JsonbValue *ajv;
+	JsonbParseState *jpstate = NULL;
+
+	if (PG_ARGISNULL(0))
+	{
+		PG_RETURN_NULL();
+	}
+
+	j = PG_GETARG_JSONB_P(0);
+
+	if (!JB_ROOT_IS_ARRAY(j))
+	{
+		PG_RETURN_NULL();
+	}
+
+	jsonb_length = JB_ROOT_COUNT(j);
+
+	lidxnull = PG_ARGISNULL(1);
+	if (!lidxnull)
+		lidx = PG_GETARG_INT32(1);
+	else
+		lidx = 0;
+
+	uidxnull = PG_ARGISNULL(2);
+	if (!uidxnull)
+		uidx = PG_GETARG_INT32(2);
+	else
+		uidx = jsonb_length;
+
+	if (lidx < 0)
+	{
+		lidx = Max(jsonb_length + lidx, 0);
+	}
+	else if (lidx > jsonb_length)
+	{
+		lidx = jsonb_length;
+	}
+
+	if (uidx < 0)
+	{
+		uidx = Max(jsonb_length + uidx, 0);
+	}
+	else if (uidx > jsonb_length)
+	{
+		uidx = jsonb_length;
+	}
+	pushJsonbValue(&jpstate, WJB_BEGIN_ARRAY, NULL);
+	for (idx = lidx; idx < uidx; idx++)
+	{
+		pushJsonbValue(&jpstate, WJB_ELEM, getIthJsonbValueFromContainer(&j->root, idx));
+	}
+
+	ajv = pushJsonbValue(&jpstate, WJB_END_ARRAY, NULL);
+
+	PG_RETURN_JSONB_P(JsonbValueToJsonb(ajv));
+}

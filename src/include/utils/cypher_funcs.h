@@ -21,6 +21,7 @@ extern Datum jsonb_toboolean(PG_FUNCTION_ARGS);
 /* list */
 extern Datum jsonb_keys(PG_FUNCTION_ARGS);
 extern Datum jsonb_tail(PG_FUNCTION_ARGS);
+extern Datum jsonb_slice(PG_FUNCTION_ARGS);
 
 /* mathematical - numeric */
 extern Datum jsonb_abs(PG_FUNCTION_ARGS);

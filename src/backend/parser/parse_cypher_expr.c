@@ -28,13 +28,12 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/tlist.h"
 #include "optimizer/var.h"
-#include "parser/analyze.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_cypher_expr.h"
+#include "parser/parse_cypher_utils.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_oper.h"
@@ -44,6 +43,7 @@
 #include "utils/builtins.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
+#include "utils/fmgroids.h"
 
 static Node *transformCypherExprRecurse(ParseState *pstate, Node *expr);
 static Node *transformColumnRef(ParseState *pstate, ColumnRef *cref);
@@ -82,13 +82,12 @@ static List *func_get_best_args(ParseState *pstate, List *args,
 static Node *transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c);
 static Node *transformIndirection(ParseState *pstate, A_Indirection *indir);
 static Node *makeArrayIndex(ParseState *pstate, Node *idx, bool exclusive);
-static Node *adjustListIndexType(ParseState *pstate, Node *idx);
 static Node *transformAExprOp(ParseState *pstate, A_Expr *a);
 static Node *transformAExprIn(ParseState *pstate, A_Expr *a);
 static Node *transformBoolExpr(ParseState *pstate, BoolExpr *b);
 static Node *coerce_unknown_const(ParseState *pstate, Node *expr, Oid ityp,
 								  Oid otyp);
-static Datum stringToJsonb(ParseState *pstate, char *s, int location);
+static Datum stringToJsonb(ParseState *pstate, const char *s, int location);
 static Node *coerce_to_jsonb(ParseState *pstate, Node *expr,
 							 const char *targetname);
 static bool is_graph_type(Oid type);
@@ -475,7 +474,6 @@ transformFields(ParseState *pstate, Node *basenode, List *fields, int location)
 	ListCell   *lf;
 	Value	   *field;
 	List	   *path = NIL;
-	CypherAccessExpr *a;
 
 	res = basenode;
 	restype = exprType(res);
@@ -536,11 +534,7 @@ transformFields(ParseState *pstate, Node *basenode, List *fields, int location)
 		path = lappend(path, elem);
 	}
 
-	a = makeNode(CypherAccessExpr);
-	a->arg = (Expr *) res;
-	a->path = path;
-
-	return (Node *) a;
+	return (Node *) makeJsonbFuncAccessor(res, path);
 }
 
 static Node *
@@ -1547,7 +1541,6 @@ transformIndirection(ParseState *pstate, A_Indirection *indir)
 	Oid			restype;
 	int			location;
 	ListCell   *li;
-	CypherAccessExpr *a;
 	List	   *path = NIL;
 
 	res = transformCypherExprRecurse(pstate, indir->arg);
@@ -1592,7 +1585,9 @@ transformIndirection(ParseState *pstate, A_Indirection *indir)
 			Assert(IsA(i, A_Indices));
 
 			if (!type_is_array_domain(restype))
+			{
 				break;
+			}
 
 			ind = (A_Indices *) i;
 
@@ -1625,12 +1620,9 @@ transformIndirection(ParseState *pstate, A_Indirection *indir)
 
 	res = filterAccessArg(pstate, res, location, "map or list");
 
-	if (IsA(res, CypherAccessExpr))
+	if (IsJsonbAccessor(res))
 	{
-		a = (CypherAccessExpr *) res;
-
-		res = (Node *) a->arg;
-		path = a->path;
+		getAccessorArguments(res, &res, &path);
 	}
 
 	for_each_cell(li, li)
@@ -1643,44 +1635,71 @@ transformIndirection(ParseState *pstate, A_Indirection *indir)
 			elem = (Node *) makeConst(TEXTOID, -1, DEFAULT_COLLATION_OID, -1,
 									  CStringGetTextDatum(strVal(i)),
 									  false, false);
+			path = lappend(path, elem);
 		}
 		else
 		{
 			A_Indices  *ind;
 			CypherIndices *cind;
-			Node	   *lidx;
-			Node	   *uidx;
+			Node	   *idx = NULL;
 
 			Assert(IsA(i, A_Indices));
-
 			ind = (A_Indices *) i;
 
-			/*
-			 * ExecEvalCypherAccess() will handle lidx and uidx properly
-			 * based on their types.
-			 */
+			if(ind->is_slice)
+			{
+				Node *lidx = ind->lidx;
+				Node *uidx = ind->uidx;
 
-			lidx = transformCypherExprRecurse(pstate, ind->lidx);
-			lidx = adjustListIndexType(pstate, lidx);
-			uidx = transformCypherExprRecurse(pstate, ind->uidx);
-			uidx = adjustListIndexType(pstate, uidx);
+				if (!lidx)
+				{
+					lidx = (Node *) makeNullConst(INT4OID, -1, InvalidOid);
+				}
+				else
+				{
+					lidx = transformCypherExprRecurse(pstate, lidx);
+				}
 
-			cind = makeNode(CypherIndices);
-			cind->is_slice = ind->is_slice;
-			cind->lidx = (Expr *) lidx;
-			cind->uidx = (Expr *) uidx;
+				if (!uidx)
+				{
+					uidx = (Node *) makeNullConst(INT4OID, -1, InvalidOid);
+				}
+				else
+				{
+					uidx = transformCypherExprRecurse(pstate, uidx);
+				}
 
-			elem = (Node *) cind;
+				res = (Node *) makeJsonbSliceFunc((Node *) makeJsonbFuncAccessor(res, path), lidx, uidx);
+				path = NIL;
+			}
+			else
+			{
+				if(!idx && ind->lidx)
+				{
+					idx = ind->lidx;
+				}
+
+				if(!idx && ind->uidx)
+				{
+					idx = ind->uidx;
+				}
+
+				idx = transformCypherExprRecurse(pstate, idx);
+				idx = coerce_expr(pstate, idx, exprType(idx), TEXTOID,
+				                  -1, COERCION_EXPLICIT, COERCE_EXPLICIT_CAST,
+				                  exprLocation(ind->uidx));
+				elem = idx;
+
+				path = lappend(path, elem);
+			}
 		}
-
-		path = lappend(path, elem);
 	}
 
-	a = makeNode(CypherAccessExpr);
-	a->arg = (Expr *) res;
-	a->path = path;
-
-	return (Node *) a;
+	if (path == NIL)
+	{
+		return res;
+	}
+	return (Node *) makeJsonbFuncAccessor(res, path);
 }
 
 static Node *
@@ -1715,23 +1734,6 @@ makeArrayIndex(ParseState *pstate, Node *idx, bool exclusive)
 							  result, one, last_srf, -1);
 
 	return result;
-}
-
-static Node *
-adjustListIndexType(ParseState *pstate, Node *idx)
-{
-	if (idx == NULL)
-		return NULL;
-
-	switch (exprType(idx))
-	{
-		case TEXTOID:
-		case BOOLOID:
-		case JSONBOID:
-			return idx;
-		default:
-			return coerce_to_jsonb(pstate, idx, "list index");
-	}
 }
 
 static Node *
@@ -1794,11 +1796,6 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 			strcmp(opname, "<=") == 0 ||
 			strcmp(opname, ">=") == 0)
 		{
-			if (ltype != InvalidOid && rtype == UNKNOWNOID)
-				rtype = ltype;
-			else if (ltype == UNKNOWNOID && rtype != InvalidOid)
-				ltype = rtype;
-
 			if (ltype == GRAPHIDOID || rtype == GRAPHIDOID)
 				return (Node *) make_op(pstate, a->name, l, r, last_srf,
 										a->location);
@@ -1807,8 +1804,25 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 				!OidIsValid(LookupOperName(pstate, a->name, ltype, rtype,
 							true, a->location)))
 			{
-				l = coerce_to_jsonb(pstate, l, "jsonb");
-				r = coerce_to_jsonb(pstate, r, "jsonb");
+				if (ltype == rtype || ltype == UNKNOWNOID || rtype == UNKNOWNOID)
+				{
+					l = coerce_to_jsonb(pstate, l, "jsonb");
+					r = coerce_to_jsonb(pstate, r, "jsonb");
+				}
+				else
+				{
+					bool left_type_is_jsonb = (ltype == JSONBOID);
+					if (left_type_is_jsonb)
+						l = coerce_expr(pstate, l, JSONBOID, rtype, -1,
+										COERCION_ASSIGNMENT,
+										COERCE_IMPLICIT_CAST,
+										a->location);
+					else
+						r = coerce_expr(pstate, r, JSONBOID, ltype, -1,
+										COERCION_ASSIGNMENT,
+										COERCE_IMPLICIT_CAST,
+										a->location);
+				}
 
 				return (Node *) make_op(pstate, a->name, l, r, last_srf,
 										a->location);
@@ -1853,6 +1867,7 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 			break;
 		case T_CypherAccessExpr:
 		case T_Var:
+		case T_FuncExpr:
 			result = (Node *) make_op(pstate, list_make1(makeString("@>")),
 									  rexpr, lexpr, pstate->p_last_srf,
 									  a->location);
@@ -2062,23 +2077,40 @@ coerce_expr(ParseState *pstate, Node *expr, Oid ityp, Oid otyp, int32 otypmod,
 			}
 
 			/*
-			 * Cast our JSONBOID types here, exec phase will do the rest.
-			 * Note: The output of a jsonb string is double quoted (not a
-			 * proper format for strings). We defer this to the execution
-			 * phase of the cypher type cast.
+			 * If JSONBOID is converted to TEXTOID, jsonb_extract_path_text is
+			 * called instead of jsonb_extract_path and converted to TEXT.
+			 *
+			 * Because, when uses jsonb_extract_path with text casting, a
+			 * double quote occurs.
 			 */
+			if (otyp == TEXTOID && IsA(expr, FuncExpr))
+			{
+				FuncExpr *funcExpr = (FuncExpr *) expr;
+				if (funcExpr->funcid == F_JSONB_EXTRACT_PATH)
+				{
+					funcExpr->funcid = F_JSONB_EXTRACT_PATH_TEXT;
+					funcExpr->funcresulttype = TEXTOID;
+					return (Node *) funcExpr;
+				}
+			}
 
-			return build_cypher_cast_expr(expr, otyp, cctx, cform, loc);
+			node = coerce_to_target_type(pstate, expr, ityp, otyp, otypmod,
+										 cctx, cform, loc);
+			if (!node)
+			{
+				/*
+				 * Cast our JSONBOID types here, exec phase will do the rest.
+				 */
+				return build_cypher_cast_expr(expr, otyp, cctx, cform, loc);
+			}
 		}
 
 		/* Catch cypher to_jsonb casts here */
 		if (otyp == JSONBOID)
 		{
-			Node	   *last_srf = pstate->p_last_srf;
-
-			return ParseFuncOrColumn(pstate,
-									 list_make1(makeString("to_jsonb")),
-									 list_make1(expr), last_srf, NULL, false, loc);
+			return (Node *) makeFuncExpr(F_TO_JSONB, JSONBOID,
+										 list_make1(expr), InvalidOid,
+										 InvalidOid, COERCE_EXPLICIT_CALL);
 		}
 	}
 
@@ -2160,7 +2192,7 @@ coerce_unknown_const(ParseState *pstate, Node *expr, Oid ityp, Oid otyp)
 }
 
 static Datum
-stringToJsonb(ParseState *pstate, char *s, int location)
+stringToJsonb(ParseState *pstate, const char *s, int location)
 {
 	StringInfoData si;
 	const char *c;
@@ -2259,7 +2291,7 @@ coerce_all_to_jsonb(ParseState *pstate, Node *expr)
 								 list_make1(expr),
 								 pstate->p_last_srf, NULL,
 								 false,
-		                         exprLocation(expr));
+								 exprLocation(expr));
 	}
 
 	expr = coerce_expr(pstate, expr, type, JSONBOID, -1,
@@ -2289,12 +2321,9 @@ transformCypherMapForSet(ParseState *pstate, Node *expr, List **pathelems,
 
 	pstate->p_expr_kind = sv_expr_kind;
 
-	if (IsA(expr, CypherAccessExpr))
+	if (IsJsonbAccessor(expr))
 	{
-		CypherAccessExpr *a = (CypherAccessExpr *) expr;
-
-		aelem = (Node *) a->arg;
-		apath = a->path;
+		getAccessorArguments(expr, &aelem, &apath);
 	}
 	else
 	{
