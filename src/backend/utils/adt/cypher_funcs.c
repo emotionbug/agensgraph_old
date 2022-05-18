@@ -46,6 +46,7 @@ static bool is_numeric_integer(Numeric n);
 static void ereport_invalid_jsonb_param(FunctionCallJsonbInfo *fcjinfo);
 static char *type_to_jsonb_type_str(Oid type);
 static Jsonb *datum_to_jsonb(Datum d, Oid type);
+static Datum get_numeric_0_datum(void);
 
 Datum
 jsonb_head(PG_FUNCTION_ARGS)
@@ -122,34 +123,73 @@ jsonb_length(PG_FUNCTION_ARGS)
 	PG_RETURN_JSONB_P(JsonbValueToJsonb(&jv));
 }
 
+/*
+ * helper function to provide a constant numeric ZERO datum,
+ * lazy initialized.
+ */
+static Datum
+get_numeric_0_datum(void)
+{
+	static Datum ZERO = 0;
+
+	if (ZERO == 0)
+	{
+		MemoryContext oldMemoryContext;
+
+		oldMemoryContext = MemoryContextSwitchTo(TopMemoryContext);
+
+		ZERO = DirectFunctionCall1(int8_numeric, Int64GetDatum(0));
+
+		MemoryContextSwitchTo(oldMemoryContext);
+	}
+
+	return ZERO;
+}
+
 Datum
 jsonb_toboolean(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *j = PG_GETARG_JSONB_P(0);
+	Jsonb       *j = PG_GETARG_JSONB_P(0);
+	bool        ret = false;
+	Datum d;
+	JsonbValue *jv;
 
 	if (JB_ROOT_IS_SCALAR(j))
 	{
-		JsonbValue *jv;
-
 		jv = getIthJsonbValueFromContainer(&j->root, 0);
-		if (jv->type == jbvString)
+		switch (jv->type)
 		{
-			if (jv->val.string.len == 4 &&
-				pg_strncasecmp(jv->val.string.val, "true", 4) == 0)
-				PG_RETURN_BOOL(true);
-			else if (jv->val.string.len == 5 &&
-					 pg_strncasecmp(jv->val.string.val, "false", 5) == 0)
-				PG_RETURN_BOOL(false);
-			else
-				PG_RETURN_NULL();
+			case jbvString:
+				ret = BoolGetDatum(jv->val.string.len > 0);
+				break;
+			case jbvNumeric:
+				if (numeric_is_nan(jv->val.numeric))
+				{
+					ret = false;
+				}
+				else
+				{
+					d = DirectFunctionCall2(numeric_ne, get_numeric_0_datum(),
+					                        NumericGetDatum(jv->val.numeric));
+					ret = BoolGetDatum(d);
+				}
+				break;
+			case jbvBool:
+				ret = jv->val.boolean;
+				break;
+			case jbvObject:
+				ret = jv->val.object.nPairs > 0;
+				break;
+			default:
+				break;
 		}
 	}
+	else if(JB_ROOT_IS_ARRAY(j) || JB_ROOT_IS_OBJECT(j))
+	{
+		ret = JB_ROOT_COUNT(j) > 0;
+	}
 
-	ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 errmsg("toBoolean(): string is expected but %s",
-					JsonbToCString(NULL, &j->root, VARSIZE(j)))));
-	PG_RETURN_NULL();
+	PG_RETURN_BOOL(ret);
 }
 
 Datum

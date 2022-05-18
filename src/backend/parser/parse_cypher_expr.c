@@ -2094,6 +2094,16 @@ coerce_expr(ParseState *pstate, Node *expr, Oid ityp, Oid otyp, int32 otypmod,
 				}
 			}
 
+			if (otyp == BOOLOID)
+			{
+				return (Node *) makeFuncExpr(F_JSONB_TOBOOLEAN,
+				                             BOOLOID,
+				                             list_make1(expr),
+				                             InvalidOid,
+				                             JSONBOID,
+				                             COERCE_IMPLICIT_CAST);
+			}
+
 			node = coerce_to_target_type(pstate, expr, ityp, otyp, otypmod,
 										 cctx, cform, loc);
 			if (!node)
