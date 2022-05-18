@@ -146,3 +146,6 @@ test: sql_restriction
 
 # run property index
 test: propertyindex
+
+# run cypher expr test
+test: cypher_expr
