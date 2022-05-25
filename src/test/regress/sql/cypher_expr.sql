@@ -219,6 +219,7 @@ MATCH (n:v0) RETURN n.l[0], n.l[6][0],
 
 -- Null test
 RETURN '' IS NULL, '' IS NOT NULL, NULL IS NULL, NULL IS NOT NULL;
+EXPLAIN MATCH (n:v0) RETURN n.o.z IS NULL, n.l[5] IS NOT NULL;
 MATCH (n:v0) RETURN n.o.z IS NULL, n.l[5] IS NOT NULL;
 
 -- Boolean

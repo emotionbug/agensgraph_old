@@ -1960,6 +1960,9 @@ transformMatchNode(ParseState *pstate, CypherNode *cnode, bool force,
 			{
 				addElemQual(pstate, te->resno, cnode->prop_map);
 				*targetList = lappend(*targetList, te);
+				Node* columnVar = getColumnVar(pstate, rte, AG_ELEM_PROP_MAP);
+				TargetEntry * te22 = makeTargetEntry(columnVar, pstate->p_next_resno++, "TEST", true);
+				*targetList = lappend(*targetList, te22);
 			}
 		}
 
@@ -3471,20 +3474,15 @@ transform_prop_constr_worker(Node *node, prop_constr_context *ctx)
 			int			rvalloc;
 			Expr	   *expr;
 
-			a = makeJsonbFuncAccessor(ctx->prop_map, copyObject(ctx->pathelems));
+			a = makeJsonbFuncAccessor(ctx->pstate, ctx->prop_map, copyObject(ctx->pathelems));
 			lval = (Node *) a;
 
 			rval = transformCypherExpr(ctx->pstate, v, EXPR_KIND_WHERE);
 			rvaltype = exprType(rval);
 			rvalloc = exprLocation(rval);
 
-			if (rvaltype == UNKNOWNOID)
-			{
-				rval = coerce_expr(ctx->pstate, rval, rvaltype, JSONBOID, -1,
-								   COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
-			} else {
-				lval = coerce_expr(ctx->pstate, (Node *) lval, JSONBOID, rvaltype, -1, COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
-			}
+			rval = coerce_expr(ctx->pstate, rval, rvaltype, JSONBOID, -1,
+							   COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
 
 			if (rval == NULL)
 				ereport(ERROR,
@@ -4455,7 +4453,7 @@ transformSetProp(ParseState *pstate, RangeTblEntry *rte, CypherSetProp *sp,
 	expr = transformCypherExpr(pstate, sp->expr, EXPR_KIND_UPDATE_SOURCE);
 	exprtype = exprType(expr);
 	expr = coerce_expr(pstate, expr, exprtype, JSONBOID, -1,
-					   COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+					   COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
 	if (expr == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),

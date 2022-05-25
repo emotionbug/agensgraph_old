@@ -12,6 +12,8 @@
 
 #include "fmgr.h"
 
+extern Datum cypher_jsonb_extract_path(PG_FUNCTION_ARGS);
+
 /* scalar */
 extern Datum jsonb_head(PG_FUNCTION_ARGS);
 extern Datum jsonb_last(PG_FUNCTION_ARGS);

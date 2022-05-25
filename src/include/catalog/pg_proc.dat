@@ -10605,4 +10605,9 @@
   proname => 'jsonb_slice', proisstrict => 'f', prorettype => 'jsonb',
   proargtypes => 'jsonb int4 int4',
   prosrc => 'jsonb_slice' },
+{ oid => '7248', descr => 'get value from jsonb with path elements (cypher)',
+  proname => 'cypher_jsonb_extract_path', prorettype => 'jsonb',
+  proargtypes => 'jsonb _text', proallargtypes => '{jsonb,_text}',
+  proargmodes => '{i,i}', proargnames => '{from_json,path_elems}',
+  prosrc => 'cypher_jsonb_extract_path' },
 ]

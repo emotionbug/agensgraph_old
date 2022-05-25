@@ -534,7 +534,7 @@ transformFields(ParseState *pstate, Node *basenode, List *fields, int location)
 		path = lappend(path, elem);
 	}
 
-	return (Node *) makeJsonbFuncAccessor(res, path);
+	return (Node *) makeJsonbFuncAccessor(pstate, res, path);
 }
 
 static Node *
@@ -1475,7 +1475,7 @@ func_get_best_args(ParseState *pstate, List *args, Oid argtypes[FUNC_MAX_ARGS],
 
 		if (argtypes[i] == JSONBOID || candidate->args[i] == JSONBOID)
 			arg = coerce_expr(pstate, arg, argtypes[i], candidate->args[i], -1,
-							  COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+							  COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
 
 		newargs = lappend(newargs, arg);
 		i++;
@@ -1669,7 +1669,7 @@ transformIndirection(ParseState *pstate, A_Indirection *indir)
 					uidx = transformCypherExprRecurse(pstate, uidx);
 				}
 
-				res = (Node *) makeJsonbSliceFunc((Node *) makeJsonbFuncAccessor(res, path), lidx, uidx);
+				res = (Node *) makeJsonbSliceFunc((Node *) makeJsonbFuncAccessor(pstate, res, path), lidx, uidx);
 				path = NIL;
 			}
 			else
@@ -1699,7 +1699,7 @@ transformIndirection(ParseState *pstate, A_Indirection *indir)
 	{
 		return res;
 	}
-	return (Node *) makeJsonbFuncAccessor(res, path);
+	return (Node *) makeJsonbFuncAccessor(pstate, res, path);
 }
 
 static Node *
@@ -1714,7 +1714,7 @@ makeArrayIndex(ParseState *pstate, Node *idx, bool exclusive)
 
 	idxexpr = transformCypherExprRecurse(pstate, idx);
 	result = coerce_expr(pstate, idxexpr, exprType(idxexpr), INT4OID, -1,
-						 COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+						 COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
 	if (result == NULL)
 	{
 		ereport(ERROR,
@@ -2086,7 +2086,7 @@ coerce_expr(ParseState *pstate, Node *expr, Oid ityp, Oid otyp, int32 otypmod,
 			if (otyp == TEXTOID && IsA(expr, FuncExpr))
 			{
 				FuncExpr *funcExpr = (FuncExpr *) expr;
-				if (funcExpr->funcid == F_JSONB_EXTRACT_PATH)
+				if (funcExpr->funcid == F_CYPHER_JSONB_EXTRACT_PATH)
 				{
 					funcExpr->funcid = F_JSONB_EXTRACT_PATH_TEXT;
 					funcExpr->funcresulttype = TEXTOID;
@@ -2420,7 +2420,7 @@ transformCypherMapForSet(ParseState *pstate, Node *expr, List **pathelems,
 
 			t = (Node *) cind->uidx;
 			t = coerce_to_target_type(pstate, t, exprType(t), TEXTOID, -1,
-									  COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST,
+									  COERCION_EXPLICIT, COERCE_EXPLICIT_CAST,
 									  -1);
 			if (t == NULL)
 			{
@@ -2462,7 +2462,7 @@ coerce_cypher_arg_to_boolean(ParseState *pstate, Node *node,
 		Node		*newnode;
 
 		newnode = coerce_expr(pstate, node, inputTypeId, BOOLOID, -1,
-							  COERCION_ASSIGNMENT, COERCE_IMPLICIT_CAST, -1);
+							  COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
 		if (newnode == NULL)
 		{
 			ereport(ERROR,

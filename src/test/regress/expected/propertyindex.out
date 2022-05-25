@@ -35,22 +35,22 @@ CREATE PROPERTY INDEX ON piv1 ((body.weight / body.height));
  properties | jsonb   |           | not null | jsonb_build_object()
 Indexes:
     "piv1_pkey" PRIMARY KEY, btree (id)
-    "piv1_age_idx" btree ((properties.'age'::text))
-    "piv1_first_idx" btree (((properties.'name'::text.'first'::text) `+` (properties.'name'::text.'last'::text)))
-    "piv1_first_last_idx" btree ((properties.'name'::text.'first'::text), (properties.'name'::text.'last'::text))
-    "piv1_name_idx" btree ((properties.'name'::text))
-    "piv1_weight_idx" btree (((properties.'body'::text.'weight'::text) `/` (properties.'body'::text.'height'::text)))
+    "piv1_age_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['age'::text]))
+    "piv1_first_idx" btree ((pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]) `+` pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'last'::text])))
+    "piv1_first_last_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]), pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'last'::text]))
+    "piv1_name_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text]))
+    "piv1_weight_idx" btree ((pg_catalog.jsonb_extract_path(properties, ARRAY['body'::text, 'weight'::text]) `/` pg_catalog.jsonb_extract_path(properties, ARRAY['body'::text, 'height'::text])))
 Inherits: propidx.ag_vertex
 
 \dGi piv1*
-                                                                    List of property indexes
-  Graph  | LabelName |      IndexName      | Unique |    Owner    |                                          Indexdef                                           
----------+-----------+---------------------+--------+-------------+---------------------------------------------------------------------------------------------
- propidx | piv1      | piv1_age_idx        | f      | regressrole | CREATE PROPERTY INDEX piv1_age_idx ON piv1 USING btree (age)
- propidx | piv1      | piv1_first_idx      | f      | regressrole | CREATE PROPERTY INDEX piv1_first_idx ON piv1 USING btree (((name.first) + (name.last)))
- propidx | piv1      | piv1_first_last_idx | f      | regressrole | CREATE PROPERTY INDEX piv1_first_last_idx ON piv1 USING btree (name.first, name.last)
- propidx | piv1      | piv1_name_idx       | f      | regressrole | CREATE PROPERTY INDEX piv1_name_idx ON piv1 USING btree (name)
- propidx | piv1      | piv1_weight_idx     | f      | regressrole | CREATE PROPERTY INDEX piv1_weight_idx ON piv1 USING btree (((body.weight) / (body.height)))
+                                                                                                                     List of property indexes
+  Graph  | LabelName |      IndexName      | Unique |    Owner    |                                                                                           Indexdef                                                                                            
+---------+-----------+---------------------+--------+-------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ propidx | piv1      | piv1_age_idx        | f      | regressrole | CREATE PROPERTY INDEX piv1_age_idx ON piv1 USING btree ((pg_catalog.jsonb_extract_path(properties, ['age'])))
+ propidx | piv1      | piv1_first_idx      | f      | regressrole | CREATE PROPERTY INDEX piv1_first_idx ON piv1 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']) + pg_catalog.jsonb_extract_path(properties, ['name', 'last'])))
+ propidx | piv1      | piv1_first_last_idx | f      | regressrole | CREATE PROPERTY INDEX piv1_first_last_idx ON piv1 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'last'])))
+ propidx | piv1      | piv1_name_idx       | f      | regressrole | CREATE PROPERTY INDEX piv1_name_idx ON piv1 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name'])))
+ propidx | piv1      | piv1_weight_idx     | f      | regressrole | CREATE PROPERTY INDEX piv1_weight_idx ON piv1 USING btree ((pg_catalog.jsonb_extract_path(properties, ['body', 'weight']) / pg_catalog.jsonb_extract_path(properties, ['body', 'height'])))
 (5 rows)
 
 -- Check property name & access method type
@@ -75,10 +75,10 @@ HINT:  You must specify an operator class for the index or define a default oper
  properties | jsonb   |           | not null | jsonb_build_object()
 Indexes:
     "piv2_pkey" PRIMARY KEY, btree (id)
-    "piv2_first_idx" btree ((properties.'name'::text.'first'::text))
-    "piv2_first_idx1" hash ((properties.'name'::text.'first'::text))
-    "piv2_name_idx" btree ((properties.'name'::text))
-    "piv2_name_idx1" gin ((properties.'name'::text))
+    "piv2_first_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]))
+    "piv2_first_idx1" hash (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]))
+    "piv2_name_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text]))
+    "piv2_name_idx1" gin (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text]))
 Inherits: propidx.ag_vertex
 
 \dGv+ piv2
@@ -91,20 +91,20 @@ Inherits: propidx.ag_vertex
 Vertex label "propidx.piv2"
 --
 Property Indexes:
-    "piv2_first_idx" btree (name.first)
-    "piv2_first_idx1" hash (name.first)
-    "piv2_name_idx" btree (name)
-    "piv2_name_idx1" gin (name)
+    "piv2_first_idx" btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])))
+    "piv2_first_idx1" hash ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])))
+    "piv2_name_idx" btree ((pg_catalog.jsonb_extract_path(properties, ['name'])))
+    "piv2_name_idx1" gin ((pg_catalog.jsonb_extract_path(properties, ['name'])))
 Inherits: propidx.ag_vertex
 
 \dGi piv2*
-                                                       List of property indexes
-  Graph  | LabelName |    IndexName    | Unique |    Owner    |                               Indexdef                                
----------+-----------+-----------------+--------+-------------+-----------------------------------------------------------------------
- propidx | piv2      | piv2_first_idx  | f      | regressrole | CREATE PROPERTY INDEX piv2_first_idx ON piv2 USING btree (name.first)
- propidx | piv2      | piv2_first_idx1 | f      | regressrole | CREATE PROPERTY INDEX piv2_first_idx1 ON piv2 USING hash (name.first)
- propidx | piv2      | piv2_name_idx   | f      | regressrole | CREATE PROPERTY INDEX piv2_name_idx ON piv2 USING btree (name)
- propidx | piv2      | piv2_name_idx1  | f      | regressrole | CREATE PROPERTY INDEX piv2_name_idx1 ON piv2 USING gin (name)
+                                                                                 List of property indexes
+  Graph  | LabelName |    IndexName    | Unique |    Owner    |                                                         Indexdef                                                          
+---------+-----------+-----------------+--------+-------------+---------------------------------------------------------------------------------------------------------------------------
+ propidx | piv2      | piv2_first_idx  | f      | regressrole | CREATE PROPERTY INDEX piv2_first_idx ON piv2 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])))
+ propidx | piv2      | piv2_first_idx1 | f      | regressrole | CREATE PROPERTY INDEX piv2_first_idx1 ON piv2 USING hash ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])))
+ propidx | piv2      | piv2_name_idx   | f      | regressrole | CREATE PROPERTY INDEX piv2_name_idx ON piv2 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name'])))
+ propidx | piv2      | piv2_name_idx1  | f      | regressrole | CREATE PROPERTY INDEX piv2_name_idx1 ON piv2 USING gin ((pg_catalog.jsonb_extract_path(properties, ['name'])))
 (4 rows)
 
 -- Concurrently build & if not exist
@@ -127,10 +127,10 @@ CREATE PROPERTY INDEX ON piv3 (name.first) WHERE (name IS NOT NULL);
  properties | jsonb   |           | not null | jsonb_build_object()
 Indexes:
     "piv3_pkey" PRIMARY KEY, btree (id)
-    "piv3_first_idx" btree ((properties.'name'::text.'first'::text))
-    "piv3_first_idx1" btree ((properties.'name'::text.'first'::text)) WITH (fillfactor='80')
-    "piv3_first_idx2" btree ((properties.'name'::text.'first'::text)) WHERE (properties.'name'::text) IS NOT NULL
-    "piv3_name_idx" btree ((properties.'name'::text))
+    "piv3_first_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]))
+    "piv3_first_idx1" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text])) WITH (fillfactor='80')
+    "piv3_first_idx2" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text])) WHERE pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text]) IS NOT NULL
+    "piv3_name_idx" btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text]))
 Inherits: propidx.ag_vertex
 
 \dGv+ piv3
@@ -143,20 +143,20 @@ Inherits: propidx.ag_vertex
 Vertex label "propidx.piv3"
 --
 Property Indexes:
-    "piv3_first_idx" btree (name.first)
-    "piv3_first_idx1" btree (name.first) WITH (fillfactor='80')
-    "piv3_first_idx2" btree (name.first) WHERE (name) IS NOT NULL
-    "piv3_name_idx" btree (name)
+    "piv3_first_idx" btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])))
+    "piv3_first_idx1" btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']))) WITH (fillfactor='80')
+    "piv3_first_idx2" btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']))) WHERE pg_catalog.jsonb_extract_path(properties, ['name']) IS NOT NULL
+    "piv3_name_idx" btree ((pg_catalog.jsonb_extract_path(properties, ['name'])))
 Inherits: propidx.ag_vertex
 
 \dGi piv3*
-                                                                    List of property indexes
-  Graph  | LabelName |    IndexName    | Unique |    Owner    |                                            Indexdef                                             
----------+-----------+-----------------+--------+-------------+-------------------------------------------------------------------------------------------------
- propidx | piv3      | piv3_first_idx  | f      | regressrole | CREATE PROPERTY INDEX piv3_first_idx ON piv3 USING btree (name.first)
- propidx | piv3      | piv3_first_idx1 | f      | regressrole | CREATE PROPERTY INDEX piv3_first_idx1 ON piv3 USING btree (name.first) WITH (fillfactor='80')
- propidx | piv3      | piv3_first_idx2 | f      | regressrole | CREATE PROPERTY INDEX piv3_first_idx2 ON piv3 USING btree (name.first) WHERE (name) IS NOT NULL
- propidx | piv3      | piv3_name_idx   | f      | regressrole | CREATE PROPERTY INDEX piv3_name_idx ON piv3 USING btree (name)
+                                                                                                                    List of property indexes
+  Graph  | LabelName |    IndexName    | Unique |    Owner    |                                                                                             Indexdef                                                                                             
+---------+-----------+-----------------+--------+-------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ propidx | piv3      | piv3_first_idx  | f      | regressrole | CREATE PROPERTY INDEX piv3_first_idx ON piv3 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])))
+ propidx | piv3      | piv3_first_idx1 | f      | regressrole | CREATE PROPERTY INDEX piv3_first_idx1 ON piv3 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']))) WITH (fillfactor='80')
+ propidx | piv3      | piv3_first_idx2 | f      | regressrole | CREATE PROPERTY INDEX piv3_first_idx2 ON piv3 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']))) WHERE pg_catalog.jsonb_extract_path(properties, ['name']) IS NOT NULL
+ propidx | piv3      | piv3_name_idx   | f      | regressrole | CREATE PROPERTY INDEX piv3_name_idx ON piv3 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name'])))
 (4 rows)
 
 -- Unique property index
@@ -165,7 +165,7 @@ CREATE UNIQUE PROPERTY INDEX ON piv4 (id);
 CREATE (:piv4 {id: 100});
 CREATE (:piv4 {id: 100});
 ERROR:  duplicate key value violates unique constraint "piv4_id_idx"
-DETAIL:  Key ((properties.'id'::text))=(100) already exists.
+DETAIL:  Key (pg_catalog.jsonb_extract_path(properties, ARRAY['id'::text]))=(100) already exists.
 \d propidx.piv4
                                                          Table "propidx.piv4"
    Column   |  Type   | Collation | Nullable |                                         Default                                         
@@ -174,7 +174,7 @@ DETAIL:  Key ((properties.'id'::text))=(100) already exists.
  properties | jsonb   |           | not null | jsonb_build_object()
 Indexes:
     "piv4_pkey" PRIMARY KEY, btree (id)
-    "piv4_id_idx" UNIQUE, btree ((properties.'id'::text))
+    "piv4_id_idx" UNIQUE, btree (pg_catalog.jsonb_extract_path(properties, ARRAY['id'::text]))
 Inherits: propidx.ag_vertex
 
 \dGv+ piv4
@@ -187,14 +187,14 @@ Inherits: propidx.ag_vertex
 Vertex label "propidx.piv4"
 --
 Property Indexes:
-    "piv4_id_idx" UNIQUE btree (id)
+    "piv4_id_idx" UNIQUE btree ((pg_catalog.jsonb_extract_path(properties, ['id'])))
 Inherits: propidx.ag_vertex
 
 \dGi piv4*
-                                                   List of property indexes
-  Graph  | LabelName |  IndexName  | Unique |    Owner    |                             Indexdef                              
----------+-----------+-------------+--------+-------------+-------------------------------------------------------------------
- propidx | piv4      | piv4_id_idx | t      | regressrole | CREATE UNIQUE PROPERTY INDEX piv4_id_idx ON piv4 USING btree (id)
+                                                                           List of property indexes
+  Graph  | LabelName |  IndexName  | Unique |    Owner    |                                                      Indexdef                                                      
+---------+-----------+-------------+--------+-------------+--------------------------------------------------------------------------------------------------------------------
+ propidx | piv4      | piv4_id_idx | t      | regressrole | CREATE UNIQUE PROPERTY INDEX piv4_id_idx ON piv4 USING btree ((pg_catalog.jsonb_extract_path(properties, ['id'])))
 (1 row)
 
 -- Multi-column unique property index
@@ -205,7 +205,7 @@ CREATE (:piv5 {name: {first: 'agens'}});
 CREATE (:piv5 {name: {first: 'agens', last: 'graph'}});
 CREATE (:piv5 {name: {first: 'agens', last: 'graph'}});
 ERROR:  duplicate key value violates unique constraint "piv5_first_last_idx"
-DETAIL:  Key ((properties.'name'::text.'first'::text), (properties.'name'::text.'last'::text))=("agens", "graph") already exists.
+DETAIL:  Key (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]), pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'last'::text]))=("agens", "graph") already exists.
 \d propidx.piv5
                                                          Table "propidx.piv5"
    Column   |  Type   | Collation | Nullable |                                         Default                                         
@@ -214,7 +214,7 @@ DETAIL:  Key ((properties.'name'::text.'first'::text), (properties.'name'::text.
  properties | jsonb   |           | not null | jsonb_build_object()
 Indexes:
     "piv5_pkey" PRIMARY KEY, btree (id)
-    "piv5_first_last_idx" UNIQUE, btree ((properties.'name'::text.'first'::text), (properties.'name'::text.'last'::text))
+    "piv5_first_last_idx" UNIQUE, btree (pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'first'::text]), pg_catalog.jsonb_extract_path(properties, ARRAY['name'::text, 'last'::text]))
 Inherits: propidx.ag_vertex
 
 \dGv+ piv5
@@ -227,14 +227,14 @@ Inherits: propidx.ag_vertex
 Vertex label "propidx.piv5"
 --
 Property Indexes:
-    "piv5_first_last_idx" UNIQUE btree (name.first, name.last)
+    "piv5_first_last_idx" UNIQUE btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'last'])))
 Inherits: propidx.ag_vertex
 
 \dGi piv5*
-                                                                    List of property indexes
-  Graph  | LabelName |      IndexName      | Unique |    Owner    |                                           Indexdef                                           
----------+-----------+---------------------+--------+-------------+----------------------------------------------------------------------------------------------
- propidx | piv5      | piv5_first_last_idx | t      | regressrole | CREATE UNIQUE PROPERTY INDEX piv5_first_last_idx ON piv5 USING btree (name.first, name.last)
+                                                                                                                        List of property indexes
+  Graph  | LabelName |      IndexName      | Unique |    Owner    |                                                                                               Indexdef                                                                                               
+---------+-----------+---------------------+--------+-------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ propidx | piv5      | piv5_first_last_idx | t      | regressrole | CREATE UNIQUE PROPERTY INDEX piv5_first_last_idx ON piv5 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'last'])))
 (1 row)
 
 -- DROP PROPERTY INDEX
@@ -270,14 +270,28 @@ CREATE PROPERTY INDEX piv7_multi_col ON piv7 (name.first, name.middle, name.last
 Vertex label "propidx.piv7"
 --
 Property Indexes:
-    "piv7_multi_col" btree (name.first, name.middle, name.last)
+    "piv7_multi_col" btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'middle'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'last'])))
 Inherits: propidx.ag_vertex
 
+EXPLAIN MATCH (n:piv7) WHERE n.name.first = 'Today' AND n.name.middle = 'Is' AND n.name.last = 'Tuesday' RETURN n;
+                                                                                                                                         QUERY PLAN                                                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using piv7_multi_col on piv7 n  (cost=0.15..8.17 rows=1 width=32)
+   Index Cond: ((pg_catalog.jsonb_extract_path(properties, '{name,first}'::text[]) = '"Today"'::jsonb) AND (pg_catalog.jsonb_extract_path(properties, '{name,middle}'::text[]) = '"Is"'::jsonb) AND (pg_catalog.jsonb_extract_path(properties, '{name,last}'::text[]) = '"Tuesday"'::jsonb))
+(2 rows)
+
+EXPLAIN MATCH (n:piv7) WHERE n.name.first = to_jsonb('Today'::text) AND n.name.middle = to_jsonb('Is'::text) AND n.name.last = to_jsonb('Tuesday'::text) RETURN n;
+                                                                                                                                                    QUERY PLAN                                                                                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using piv7_multi_col on piv7 n  (cost=0.16..8.18 rows=1 width=32)
+   Index Cond: ((pg_catalog.jsonb_extract_path(properties, '{name,first}'::text[]) = to_jsonb('Today'::text)) AND (pg_catalog.jsonb_extract_path(properties, '{name,middle}'::text[]) = to_jsonb('Is'::text)) AND (pg_catalog.jsonb_extract_path(properties, '{name,last}'::text[]) = to_jsonb('Tuesday'::text)))
+(2 rows)
+
 \dGi piv7*
-                                                                  List of property indexes
-  Graph  | LabelName |   IndexName    | Unique |    Owner    |                                           Indexdef                                            
----------+-----------+----------------+--------+-------------+-----------------------------------------------------------------------------------------------
- propidx | piv7      | piv7_multi_col | f      | regressrole | CREATE PROPERTY INDEX piv7_multi_col ON piv7 USING btree (name.first, name.middle, name.last)
+                                                                                                                                                List of property indexes
+  Graph  | LabelName |   IndexName    | Unique |    Owner    |                                                                                                                         Indexdef                                                                                                                          
+---------+-----------+----------------+--------+-------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ propidx | piv7      | piv7_multi_col | f      | regressrole | CREATE PROPERTY INDEX piv7_multi_col ON piv7 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'middle'])), (pg_catalog.jsonb_extract_path(properties, ['name', 'last'])))
 (1 row)
 
 DROP PROPERTY INDEX piv7_multi_col;
@@ -292,14 +306,14 @@ CREATE PROPERTY INDEX piv7_multi_expr ON piv7 ((name.first + name.last), age);
 Vertex label "propidx.piv7"
 --
 Property Indexes:
-    "piv7_multi_expr" btree (((name.first) + (name.last)), age)
+    "piv7_multi_expr" btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']) + pg_catalog.jsonb_extract_path(properties, ['name', 'last'])), (pg_catalog.jsonb_extract_path(properties, ['age'])))
 Inherits: propidx.ag_vertex
 
 \dGi piv7*
-                                                                   List of property indexes
-  Graph  | LabelName |    IndexName    | Unique |    Owner    |                                           Indexdef                                            
----------+-----------+-----------------+--------+-------------+-----------------------------------------------------------------------------------------------
- propidx | piv7      | piv7_multi_expr | f      | regressrole | CREATE PROPERTY INDEX piv7_multi_expr ON piv7 USING btree (((name.first) + (name.last)), age)
+                                                                                                                                           List of property indexes
+  Graph  | LabelName |    IndexName    | Unique |    Owner    |                                                                                                                    Indexdef                                                                                                                    
+---------+-----------+-----------------+--------+-------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ propidx | piv7      | piv7_multi_expr | f      | regressrole | CREATE PROPERTY INDEX piv7_multi_expr ON piv7 USING btree ((pg_catalog.jsonb_extract_path(properties, ['name', 'first']) + pg_catalog.jsonb_extract_path(properties, ['name', 'last'])), (pg_catalog.jsonb_extract_path(properties, ['age'])))
 (1 row)
 
 DROP PROPERTY INDEX piv7_multi_expr;
@@ -320,5 +334,46 @@ CREATE INDEX piv9_index_key1 ON propidx.piv9 (properties);
 DROP PROPERTY INDEX piv9_index_key1;
 ERROR:  "piv9_index_key1" is not property index
 DROP VLABEL piv9;
+CREATE VLABEL piv10;
+CREATE PROPERTY INDEX piv10_index_name ON piv10 USING BTREE((name::text) text_pattern_ops);
+CREATE (:piv10 {name: 'Alex Jones'})
+CREATE (:piv10 {name: 'Logan Hayes'})
+CREATE (:piv10 {name: 'Sidney Holland'})
+CREATE (:piv10 {name: 'Kit Johnson'})
+CREATE (:piv10 {name: 'Terry Ball'})
+CREATE (:piv10 {name: 'Kris Hughes'})
+CREATE (:piv10 {name: 'Rowan Mclaughlin'})
+CREATE (:piv10 {name: 'Jesse Rivers'})
+CREATE (:piv10 {name: 'Aiden Love'})
+CREATE (:piv10 {name: 'Vic Trevino'})
+CREATE (:piv10 {name: 'Vic Mullen'});
+EXPLAIN MATCH (n:piv10) WHERE n.name::text ~~ 'V%'::text RETURN n.name;
+                                                                                          QUERY PLAN                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on piv10 n  (cost=4.21..13.71 rows=6 width=32)
+   Filter: (pg_catalog.jsonb_extract_path_text(properties, '{name}'::text[]) ~~ 'V%'::text)
+   ->  Bitmap Index Scan on piv10_index_name  (cost=0.00..4.21 rows=6 width=0)
+         Index Cond: ((pg_catalog.jsonb_extract_path_text(properties, '{name}'::text[]) ~>=~ 'V'::text) AND (pg_catalog.jsonb_extract_path_text(properties, '{name}'::text[]) ~<~ 'W'::text))
+(4 rows)
+
+MATCH (n:piv10) WHERE n.name::text ~~ 'V%'::text RETURN n.name;
+     name      
+---------------
+ "Vic Trevino"
+ "Vic Mullen"
+(2 rows)
+
+DROP PROPERTY INDEX piv10_index_name;
+DROP VLABEL piv10 CASCADE;
 -- teardown
+DROP GRAPH propidx CASCADE;
+NOTICE:  drop cascades to 8 other objects
+DETAIL:  drop cascades to sequence propidx.ag_label_seq
+drop cascades to vlabel ag_vertex
+drop cascades to elabel ag_edge
+drop cascades to vlabel piv1
+drop cascades to vlabel piv2
+drop cascades to vlabel piv3
+drop cascades to vlabel piv4
+drop cascades to vlabel piv5
 RESET ROLE;

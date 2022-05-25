@@ -12,7 +12,7 @@
 
 #include "parser/parse_node.h"
 
-FuncExpr *makeJsonbFuncAccessor(Node *expr, List *path);
+FuncExpr *makeJsonbFuncAccessor(ParseState *pstate, Node *expr, List *path);
 bool IsJsonbAccessor(Node *expr);
 void getAccessorArguments(Node *node, Node **expr, List **path);
 FuncExpr *makeJsonbSliceFunc(Node *expr, Node *lidx, Node *uidx);

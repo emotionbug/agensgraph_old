@@ -47,6 +47,10 @@ static void ereport_invalid_jsonb_param(FunctionCallJsonbInfo *fcjinfo);
 static char *type_to_jsonb_type_str(Oid type);
 static Jsonb *datum_to_jsonb(Datum d, Oid type);
 static Datum get_numeric_0_datum(void);
+static Datum cypher_get_jsonb_path_all(FunctionCallInfo fcinfo, bool as_text);
+static JsonbValue *
+findJsonbValueFromContainerLen(JsonbContainer *container, uint32 flags,
+                               char *key, uint32 keylen);
 
 Datum
 jsonb_head(PG_FUNCTION_ARGS)
@@ -1388,4 +1392,191 @@ jsonb_slice(PG_FUNCTION_ARGS)
 	ajv = pushJsonbValue(&jpstate, WJB_END_ARRAY, NULL);
 
 	PG_RETURN_JSONB_P(JsonbValueToJsonb(ajv));
+}
+
+Datum cypher_jsonb_extract_path(PG_FUNCTION_ARGS)
+{
+	return cypher_get_jsonb_path_all(fcinfo, false);
+}
+
+/*
+ * findJsonbValueFromContainer() wrapper that sets up JsonbValue key string.
+ */
+static JsonbValue *
+findJsonbValueFromContainerLen(JsonbContainer *container, uint32 flags,
+                               char *key, uint32 keylen)
+{
+	JsonbValue	k;
+
+	k.type = jbvString;
+	k.val.string.val = key;
+	k.val.string.len = keylen;
+
+	return findJsonbValueFromContainer(container, flags, &k);
+}
+
+static Datum
+cypher_get_jsonb_path_all(FunctionCallInfo fcinfo, bool as_text)
+{
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
+	ArrayType  *path = PG_GETARG_ARRAYTYPE_P(1);
+	Jsonb	   *res;
+	Datum	   *pathtext;
+	bool	   *pathnulls;
+	int			npath;
+	int			i;
+	bool		have_object = false,
+			have_array = false;
+	JsonbValue *jbvp = NULL;
+	JsonbValue	tv;
+	JsonbContainer *container;
+
+	/*
+	 * If the array contains any null elements, return NULL, on the grounds
+	 * that you'd have gotten NULL if any RHS value were NULL in a nested
+	 * series of applications of the -> operator.  (Note: because we also
+	 * return NULL for error cases such as no-such-field, this is true
+	 * regardless of the contents of the rest of the array.)
+	 */
+	if (array_contains_nulls(path))
+		PG_RETURN_NULL();
+
+	deconstruct_array(path, TEXTOID, -1, false, 'i',
+	                  &pathtext, &pathnulls, &npath);
+
+	/* Identify whether we have object, array, or scalar at top-level */
+	container = &jb->root;
+
+	if (JB_ROOT_IS_OBJECT(jb))
+		have_object = true;
+	else if (JB_ROOT_IS_ARRAY(jb) && !JB_ROOT_IS_SCALAR(jb))
+		have_array = true;
+	else
+	{
+		Assert(JB_ROOT_IS_ARRAY(jb) && JB_ROOT_IS_SCALAR(jb));
+		/* Extract the scalar value, if it is what we'll return */
+		if (npath <= 0)
+			jbvp = getIthJsonbValueFromContainer(container, 0);
+	}
+
+	/*
+	 * If the array is empty, return the entire LHS object, on the grounds
+	 * that we should do zero field or element extractions.  For the
+	 * non-scalar case we can just hand back the object without much work. For
+	 * the scalar case, fall through and deal with the value below the loop.
+	 * (This inconsistency arises because there's no easy way to generate a
+	 * JsonbValue directly for root-level containers.)
+	 */
+	if (npath <= 0 && jbvp == NULL)
+	{
+		if (as_text)
+		{
+			PG_RETURN_TEXT_P(cstring_to_text(JsonbToCString(NULL,
+			                                                container,
+			                                                VARSIZE(jb))));
+		}
+		else
+		{
+			/* not text mode - just hand back the jsonb */
+			PG_RETURN_JSONB_P(jb);
+		}
+	}
+
+	for (i = 0; i < npath; i++)
+	{
+		if (have_object)
+		{
+			jbvp = findJsonbValueFromContainerLen(container,
+			                                      JB_FOBJECT,
+			                                      VARDATA(pathtext[i]),
+			                                      VARSIZE(pathtext[i]) - VARHDRSZ);
+		}
+		else if (have_array)
+		{
+			long		lindex;
+			uint32		index;
+			char	   *indextext = TextDatumGetCString(pathtext[i]);
+			char	   *endptr;
+
+			errno = 0;
+			lindex = strtol(indextext, &endptr, 10);
+			if (endptr == indextext || *endptr != '\0' || errno != 0 ||
+			    lindex > INT_MAX || lindex < INT_MIN)
+				PG_RETURN_NULL();
+
+			if (lindex >= 0)
+			{
+				index = (uint32) lindex;
+			}
+			else
+			{
+				/* Handle negative subscript */
+				uint32		nelements;
+
+				/* Container must be array, but make sure */
+				if (!JsonContainerIsArray(container))
+					elog(ERROR, "not a jsonb array");
+
+				nelements = JsonContainerSize(container);
+
+				if (-lindex > nelements)
+					PG_RETURN_NULL();
+				else
+					index = nelements + lindex;
+			}
+
+			jbvp = getIthJsonbValueFromContainer(container, index);
+		}
+		else
+		{
+			/* scalar, extraction yields a null */
+			PG_RETURN_NULL();
+		}
+
+		if (jbvp == NULL)
+			PG_RETURN_NULL();
+		else if (i == npath - 1)
+			break;
+
+		if (jbvp->type == jbvBinary)
+		{
+			JsonbIterator *it = JsonbIteratorInit((JsonbContainer *) jbvp->val.binary.data);
+			JsonbIteratorToken r;
+
+			r = JsonbIteratorNext(&it, &tv, true);
+			container = (JsonbContainer *) jbvp->val.binary.data;
+			have_object = r == WJB_BEGIN_OBJECT;
+			have_array = r == WJB_BEGIN_ARRAY;
+		}
+		else
+		{
+			have_object = jbvp->type == jbvObject;
+			have_array = jbvp->type == jbvArray;
+		}
+	}
+
+	if (jbvp->type == jbvNull)
+		PG_RETURN_NULL();
+
+	if (as_text)
+	{
+		/* special-case outputs for string and null values */
+		if (jbvp->type == jbvString)
+			PG_RETURN_TEXT_P(cstring_to_text_with_len(jbvp->val.string.val,
+			                                          jbvp->val.string.len));
+	}
+
+	res = JsonbValueToJsonb(jbvp);
+
+	if (as_text)
+	{
+		PG_RETURN_TEXT_P(cstring_to_text(JsonbToCString(NULL,
+		                                                &res->root,
+		                                                VARSIZE(res))));
+	}
+	else
+	{
+		/* not text mode - just hand back the jsonb */
+		PG_RETURN_JSONB_P(res);
+	}
 }

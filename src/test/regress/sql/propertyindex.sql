@@ -112,6 +112,10 @@ CREATE VLABEL piv7;
 
 CREATE PROPERTY INDEX piv7_multi_col ON piv7 (name.first, name.middle, name.last);
 \dGv+ piv7
+
+EXPLAIN MATCH (n:piv7) WHERE n.name.first = 'Today' AND n.name.middle = 'Is' AND n.name.last = 'Tuesday' RETURN n;
+EXPLAIN MATCH (n:piv7) WHERE n.name.first = to_jsonb('Today'::text) AND n.name.middle = to_jsonb('Is'::text) AND n.name.last = to_jsonb('Tuesday'::text) RETURN n;
+
 \dGi piv7*
 DROP PROPERTY INDEX piv7_multi_col;
 
@@ -142,6 +146,46 @@ DROP PROPERTY INDEX piv9_index_key1;
 
 DROP VLABEL piv9;
 
--- teardown
+CREATE VLABEL piv10;
 
+CREATE PROPERTY INDEX piv10_index_name ON piv10 USING BTREE((name::text) text_pattern_ops);
+
+CREATE (:piv10 {name: 'Alex Jones'})
+CREATE (:piv10 {name: 'Logan Hayes'})
+CREATE (:piv10 {name: 'Sidney Holland'})
+CREATE (:piv10 {name: 'Kit Johnson'})
+CREATE (:piv10 {name: 'Terry Ball'})
+CREATE (:piv10 {name: 'Kris Hughes'})
+CREATE (:piv10 {name: 'Rowan Mclaughlin'})
+CREATE (:piv10 {name: 'Jesse Rivers'})
+CREATE (:piv10 {name: 'Aiden Love'})
+CREATE (:piv10 {name: 'Vic Trevino'})
+CREATE (:piv10 {name: 'Vic Mullen'});
+
+EXPLAIN MATCH (n:piv10) WHERE n.name::text ~~ 'V%'::text RETURN n.name;
+MATCH (n:piv10) WHERE n.name::text ~~ 'V%'::text RETURN n.name;
+
+DROP PROPERTY INDEX piv10_index_name;
+
+DROP VLABEL piv10 CASCADE;
+
+CREATE VLABEL piv11;
+CREATE VLABEL piv12;
+CREATE VLABEL piv13;
+CREATE PROPERTY INDEX piv12_index_incusers ON piv12 ((any(excusers in metadata['conditions']['users']['excuserscount'] where excusers > 5)));
+\dGi piv12*
+EXPLAIN MATCH (a)
+OPTIONAL MATCH (a)-[]->(d1:piv12)
+where
+    any(excusers in d1.'metadata'.'conditions'.'users'.'excuserscount' where excusers > 5)
+with distinct(a) as r,
+collect((d1 IS NOT NULL)) as passed ,
+    collect({'SecResID' : d1.'id', 'ResType' : d1.'type'}) as secResDetailsd1 return r, any(p in passed where p) as passed, secResDetailsd1 as secresdetails;
+
+
+EXPLAIN MATCH (d1:piv12) where d1.id = 1
+return d1;
+
+-- teardown
+DROP GRAPH propidx CASCADE;
 RESET ROLE;

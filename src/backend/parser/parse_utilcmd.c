@@ -74,6 +74,7 @@
 #include "utils/ruleutils.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "nodes/print.h"
 
 
 /* State shared by transformCreateStmt and its subroutines */
@@ -4901,6 +4902,7 @@ transformCreatePropertyIndexStmt(Oid relid, CreatePropertyIndexStmt *stmt,
 		ielem->expr = prop_ref_mutator(ielem->expr);
 
 		/* Now do parse transformation of the expression */
+		elog_node_display(INFO, "index stmt", ielem->expr, true);
 		ielem->expr = transformCypherExpr(pstate, ielem->expr,
 										  EXPR_KIND_INDEX_EXPRESSION);
 
