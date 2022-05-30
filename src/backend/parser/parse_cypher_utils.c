@@ -51,8 +51,8 @@ FuncExpr *makeJsonbFuncAccessor(ParseState *pstate, Node *expr, List *path)
 						if (strcmp(te->resname, "TEST") == 0 && IsA(te->expr, Var))
 						{
 							Var *tevar = te->expr;
-//							expr = (Node *) makeVar(i, tevar->varattno, tevar->vartype, tevar->vartypmod, tevar->varcollid,
-//							                        tevar->varlevelsup);
+							expr = (Node *) makeVar(i, tevar->varattno, tevar->vartype, tevar->vartypmod, tevar->varcollid,
+							                        tevar->varlevelsup);
 						}
 					}
 				}

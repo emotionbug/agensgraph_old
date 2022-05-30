@@ -174,6 +174,18 @@ CREATE VLABEL piv12;
 CREATE VLABEL piv13;
 CREATE PROPERTY INDEX piv12_index_incusers ON piv12 ((any(excusers in metadata['conditions']['users']['excuserscount'] where excusers > 5)));
 \dGi piv12*
+SELECT indexdef FROM pg_indexes WHERE tablename = 'piv12' ORDER BY indexname;
+EXPLAIN MATCH (d1:piv12)
+where
+    any(excusers in d1.'metadata'.'conditions'.'users'.'excuserscount' where excusers > 5)
+return d1;
+
+EXPLAIN MATCH (a)
+OPTIONAL MATCH (a)-[]->(d1:piv12)
+where
+    any(excusers in d1.'metadata'.'conditions'.'users'.'excuserscount' where excusers > 5)
+return d1;
+
 EXPLAIN MATCH (a)
 OPTIONAL MATCH (a)-[]->(d1:piv12)
 where

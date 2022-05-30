@@ -4899,7 +4899,22 @@ transformCreatePropertyIndexStmt(Oid relid, CreatePropertyIndexStmt *stmt,
 				ielem->indexcolname = FigureIndexColname(ielem->expr);
 		}
 
-		ielem->expr = prop_ref_mutator(ielem->expr);
+		bool skip_prop_ref_mutator = false;
+		if (IsA(ielem->expr, ColumnRef))
+		{
+			ColumnRef *columnRef = (ColumnRef *) ielem->expr;
+			if (columnRef->fields->length == 1)
+			{
+				Node *fieldname = linitial(columnRef->fields);
+				if (IsA(fieldname, String) && strcmp(strVal(fieldname), "id") == 0)
+				{
+					skip_prop_ref_mutator = true;
+				}
+			}
+		}
+		elog_node_display(INFO, "before index stmt", ielem->expr, true);
+		if (!skip_prop_ref_mutator)
+			ielem->expr = prop_ref_mutator(ielem->expr);
 
 		/* Now do parse transformation of the expression */
 		elog_node_display(INFO, "index stmt", ielem->expr, true);

@@ -44,6 +44,7 @@
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/fmgroids.h"
+#include "nodes/print.h"
 
 static Node *transformCypherExprRecurse(ParseState *pstate, Node *expr);
 static Node *transformColumnRef(ParseState *pstate, ColumnRef *cref);
@@ -413,8 +414,20 @@ transformListCompColumnRef(ParseState *pstate, ColumnRef *cref, char *varname)
 	Node	   *field1 = linitial(cref->fields);
 	CypherListCompVar *clcvar;
 
+	if (pstate->p_expr_kind == EXPR_KIND_INDEX_EXPRESSION &&
+		list_length(cref->fields) == 2)
+	{
+		field1 = llast(cref->fields);
+	}
+
 	if (strcmp(varname, strVal(field1)) != 0)
+	{
 		return NULL;
+	}
+	else if (pstate->p_expr_kind == EXPR_KIND_INDEX_EXPRESSION)
+	{
+		cref->fields = list_make1(varname);
+	}
 
 	clcvar = makeNode(CypherListCompVar);
 	clcvar->varname = pstrdup(varname);
@@ -426,6 +439,7 @@ transformListCompColumnRef(ParseState *pstate, ColumnRef *cref, char *varname)
 
 		newfields = list_copy_tail(cref->fields, 1);
 
+		elog(INFO, "?? %s", varname);
 		return transformFields(pstate, (Node *) clcvar, newfields,
 							   cref->location);
 	}
@@ -698,7 +712,7 @@ transformCypherListComp(ParseState *pstate, CypherListComp *clc)
 	Node	   *cond;
 	Node	   *elem;
 	CypherListCompExpr *clcexpr;
-
+//	elog_node_display(INFO, "transformCypherListComp before", clc, true);
 	list = transformCypherExprRecurse(pstate, (Node *) clc->list);
 	type = exprType(list);
 	if (type != JSONBOID)
@@ -709,7 +723,9 @@ transformCypherListComp(ParseState *pstate, CypherListComp *clc)
 
 	save_varname = pstate->p_lc_varname;
 	pstate->p_lc_varname = clc->varname;
-	cond = transformCypherWhere(pstate, clc->cond, EXPR_KIND_WHERE);
+//	elog_node_display(INFO, "cond", clc->cond, true);
+	cond = transformCypherWhere(pstate, clc->cond, pstate->p_expr_kind);
+	elog_node_display(INFO, "cond after", cond, true);
 	elem = transformCypherExprRecurse(pstate, clc->elem);
 	pstate->p_lc_varname = save_varname;
 	elem = coerce_to_jsonb(pstate, elem, "list comprehension result");
@@ -721,6 +737,7 @@ transformCypherListComp(ParseState *pstate, CypherListComp *clc)
 	clcexpr->elem = (Expr *) elem;
 	clcexpr->location = clc->location;
 
+//	elog_node_display(INFO, "transformCypherListComp", clcexpr, true);
 	return (Node *) clcexpr;
 }
 
