@@ -12,11 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install depedencies
-        run: sudo apt-get install -y llvm-7
+        run: sudo apt-get install -y llvm-7 clang clang++
       - name: configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql
         env:
-          CC: 'clang'
-          CXX: 'clang++'
+          CC: 'clang-7'
+          CXX: 'clang++-7'
         run: ./configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql --with-llvm
       - name: make install
         run: make install -j$(nproc)
