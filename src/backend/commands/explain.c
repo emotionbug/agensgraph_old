@@ -3,7 +3,7 @@
  * explain.c
  *	  Explain query execution plans
  *
- * Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2016, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -21,10 +21,13 @@
 #include "commands/prepare.h"
 #include "executor/hashjoin.h"
 #include "foreign/fdwapi.h"
+#include "nodes/extensible.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/planmain.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
+#include "storage/bufmgr.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/json.h"
@@ -55,10 +58,7 @@ static void ExplainOneQuery(Query *query, IntoClause *into, ExplainState *es,
 static void report_triggers(ResultRelInfo *rInfo, bool show_relname,
 				ExplainState *es);
 static double elapsed_time(instr_time *starttime);
-static void ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
-static void ExplainPreScanMemberNodes(List *plans, PlanState **planstates,
-						  Bitmapset **rels_used);
-static void ExplainPreScanSubPlans(List *plans, Bitmapset **rels_used);
+static bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 static void ExplainNode(PlanState *planstate, List *ancestors,
 			const char *relationship, const char *plan_name,
 			ExplainState *es);
@@ -96,6 +96,8 @@ static void show_sort_group_keys(PlanState *planstate, const char *qlabel,
 					 List *ancestors, ExplainState *es);
 static void show_sortorder_options(StringInfo buf, Node *sortexpr,
 					   Oid sortOperator, Oid collation, bool nullsFirst);
+static void show_tablesample(TableSampleClause *tsc, PlanState *planstate,
+				 List *ancestors, ExplainState *es);
 static void show_sort_info(SortState *sortstate, ExplainState *es);
 static void show_hash_info(HashState *hashstate, ExplainState *es);
 static void show_tidbitmap_info(BitmapHeapScanState *planstate,
@@ -104,6 +106,7 @@ static void show_instrumentation_count(const char *qlabel, int which,
 						   PlanState *planstate, ExplainState *es);
 static void show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
+static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
@@ -116,7 +119,7 @@ static void ExplainMemberNodes(List *plans, PlanState **planstates,
 static void ExplainSubPlans(List *plans, List *ancestors,
 				const char *relationship, ExplainState *es);
 static void ExplainCustomChildren(CustomScanState *css,
-								  List *ancestors, ExplainState *es);
+					  List *ancestors, ExplainState *es);
 static void ExplainProperty(const char *qlabel, const char *value,
 				bool numeric, ExplainState *es);
 static void ExplainOpenGroup(const char *objtype, const char *labelname,
@@ -346,7 +349,7 @@ ExplainOneQuery(Query *query, IntoClause *into, ExplainState *es,
 		INSTR_TIME_SET_CURRENT(planstart);
 
 		/* plan the query */
-		plan = pg_plan_query(query, 0, params);
+		plan = pg_plan_query(query, into ? 0 : CURSOR_OPT_PARALLEL_OK, params);
 
 		INSTR_TIME_SET_CURRENT(planduration);
 		INSTR_TIME_SUBTRACT(planduration, planstart);
@@ -563,8 +566,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
  *	  convert a QueryDesc's plan tree to text and append it to es->str
  *
  * The caller should have set up the options fields of *es, as well as
- * initializing the output buffer es->str.  Other fields in *es are
- * initialized here.
+ * initializing the output buffer es->str.  Also, output formatting state
+ * such as the indent level is assumed valid.  Plan-tree-specific fields
+ * in *es are initialized here.
  *
  * NB: will not work on utility statements
  */
@@ -572,7 +576,9 @@ void
 ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 {
 	Bitmapset  *rels_used = NULL;
+	PlanState  *ps;
 
+	/* Set up ExplainState fields associated with this plan tree */
 	Assert(queryDesc->plannedstmt != NULL);
 	es->pstmt = queryDesc->plannedstmt;
 	es->rtable = queryDesc->plannedstmt->rtable;
@@ -580,7 +586,18 @@ ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	es->rtable_names = select_rtable_names_for_explain(es->rtable, rels_used);
 	es->deparse_cxt = deparse_context_for_plan_rtable(es->rtable,
 													  es->rtable_names);
-	ExplainNode(queryDesc->planstate, NIL, NULL, NULL, es);
+	es->printed_subplans = NULL;
+
+	/*
+	 * Sometimes we mark a Gather node as "invisible", which means that it's
+	 * not displayed in EXPLAIN output.  The purpose of this is to allow
+	 * running regression tests with force_parallel_mode=regress to get the
+	 * same results as running the same tests with force_parallel_mode=off.
+	 */
+	ps = queryDesc->planstate;
+	if (IsA(ps, GatherState) &&((Gather *) ps->plan)->invisible)
+		ps = outerPlanState(ps);
+	ExplainNode(ps, NIL, NULL, NULL, es);
 }
 
 /*
@@ -682,8 +699,11 @@ report_triggers(ResultRelInfo *rInfo, bool show_relname, ExplainState *es)
 				appendStringInfo(es->str, " for constraint %s", conname);
 			if (show_relname)
 				appendStringInfo(es->str, " on %s", relname);
-			appendStringInfo(es->str, ": time=%.3f calls=%.0f\n",
-							 1000.0 * instr->total, instr->ntuples);
+			if (es->timing)
+				appendStringInfo(es->str, ": time=%.3f calls=%.0f\n",
+								 1000.0 * instr->total, instr->ntuples);
+			else
+				appendStringInfo(es->str, ": calls=%.0f\n", instr->ntuples);
 		}
 		else
 		{
@@ -691,7 +711,8 @@ report_triggers(ResultRelInfo *rInfo, bool show_relname, ExplainState *es)
 			if (conname)
 				ExplainPropertyText("Constraint Name", conname, es);
 			ExplainPropertyText("Relation", relname, es);
-			ExplainPropertyFloat("Time", 1000.0 * instr->total, 3, es);
+			if (es->timing)
+				ExplainPropertyFloat("Time", 1000.0 * instr->total, 3, es);
 			ExplainPropertyFloat("Calls", instr->ntuples, 0, es);
 		}
 
@@ -722,7 +743,7 @@ elapsed_time(instr_time *starttime)
  * This ensures that we don't confusingly assign un-suffixed aliases to RTEs
  * that never appear in the EXPLAIN output (such as inheritance parents).
  */
-static void
+static bool
 ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 {
 	Plan	   *plan = planstate->plan;
@@ -730,6 +751,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_SampleScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
@@ -739,7 +761,6 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 		case T_ValuesScan:
 		case T_CteScan:
 		case T_WorkTableScan:
-		case T_SampleScan:
 			*rels_used = bms_add_member(*rels_used,
 										((Scan *) plan)->scanrelid);
 			break;
@@ -762,91 +783,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 			break;
 	}
 
-	/* initPlan-s */
-	if (planstate->initPlan)
-		ExplainPreScanSubPlans(planstate->initPlan, rels_used);
-
-	/* lefttree */
-	if (outerPlanState(planstate))
-		ExplainPreScanNode(outerPlanState(planstate), rels_used);
-
-	/* righttree */
-	if (innerPlanState(planstate))
-		ExplainPreScanNode(innerPlanState(planstate), rels_used);
-
-	/* special child plans */
-	switch (nodeTag(plan))
-	{
-		case T_ModifyTable:
-			ExplainPreScanMemberNodes(((ModifyTable *) plan)->plans,
-								  ((ModifyTableState *) planstate)->mt_plans,
-									  rels_used);
-			break;
-		case T_Append:
-			ExplainPreScanMemberNodes(((Append *) plan)->appendplans,
-									((AppendState *) planstate)->appendplans,
-									  rels_used);
-			break;
-		case T_MergeAppend:
-			ExplainPreScanMemberNodes(((MergeAppend *) plan)->mergeplans,
-								((MergeAppendState *) planstate)->mergeplans,
-									  rels_used);
-			break;
-		case T_BitmapAnd:
-			ExplainPreScanMemberNodes(((BitmapAnd *) plan)->bitmapplans,
-								 ((BitmapAndState *) planstate)->bitmapplans,
-									  rels_used);
-			break;
-		case T_BitmapOr:
-			ExplainPreScanMemberNodes(((BitmapOr *) plan)->bitmapplans,
-								  ((BitmapOrState *) planstate)->bitmapplans,
-									  rels_used);
-			break;
-		case T_SubqueryScan:
-			ExplainPreScanNode(((SubqueryScanState *) planstate)->subplan,
-							   rels_used);
-			break;
-		default:
-			break;
-	}
-
-	/* subPlan-s */
-	if (planstate->subPlan)
-		ExplainPreScanSubPlans(planstate->subPlan, rels_used);
-}
-
-/*
- * Prescan the constituent plans of a ModifyTable, Append, MergeAppend,
- * BitmapAnd, or BitmapOr node.
- *
- * Note: we don't actually need to examine the Plan list members, but
- * we need the list in order to determine the length of the PlanState array.
- */
-static void
-ExplainPreScanMemberNodes(List *plans, PlanState **planstates,
-						  Bitmapset **rels_used)
-{
-	int			nplans = list_length(plans);
-	int			j;
-
-	for (j = 0; j < nplans; j++)
-		ExplainPreScanNode(planstates[j], rels_used);
-}
-
-/*
- * Prescan a list of SubPlans (or initPlans, which also use SubPlan nodes).
- */
-static void
-ExplainPreScanSubPlans(List *plans, Bitmapset **rels_used)
-{
-	ListCell   *lst;
-
-	foreach(lst, plans)
-	{
-		SubPlanState *sps = (SubPlanState *) lfirst(lst);
-
-		ExplainPreScanNode(sps->planstate, rels_used);
-	}
+	return planstate_tree_walker(planstate, ExplainPreScanNode, rels_used);
 }
 
 /*
@@ -878,6 +815,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	const char *pname;			/* node type name for text output */
 	const char *sname;			/* node type name for non-text output */
 	const char *strategy = NULL;
+	const char *partialmode = NULL;
 	const char *operation = NULL;
 	const char *custom_name = NULL;
 	int			save_indent = es->indent;
@@ -935,6 +873,12 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_SeqScan:
 			pname = sname = "Seq Scan";
 			break;
+		case T_SampleScan:
+			pname = sname = "Sample Scan";
+			break;
+		case T_Gather:
+			pname = sname = "Gather";
+			break;
 		case T_IndexScan:
 			pname = sname = "Index Scan";
 			break;
@@ -966,7 +910,29 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			pname = sname = "WorkTable Scan";
 			break;
 		case T_ForeignScan:
-			pname = sname = "Foreign Scan";
+			sname = "Foreign Scan";
+			switch (((ForeignScan *) plan)->operation)
+			{
+				case CMD_SELECT:
+					pname = "Foreign Scan";
+					operation = "Select";
+					break;
+				case CMD_INSERT:
+					pname = "Foreign Insert";
+					operation = "Insert";
+					break;
+				case CMD_UPDATE:
+					pname = "Foreign Update";
+					operation = "Update";
+					break;
+				case CMD_DELETE:
+					pname = "Foreign Delete";
+					operation = "Delete";
+					break;
+				default:
+					pname = "???";
+					break;
+			}
 			break;
 		case T_CustomScan:
 			sname = "Custom Scan";
@@ -975,23 +941,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				pname = psprintf("Custom Scan (%s)", custom_name);
 			else
 				pname = sname;
-			break;
-		case T_SampleScan:
-			{
-				/*
-				 * Fetch the tablesample method name from RTE.
-				 *
-				 * It would be nice to also show parameters, but since we
-				 * support arbitrary expressions as parameter it might get
-				 * quite messy.
-				 */
-				RangeTblEntry *rte;
-
-				rte = rt_fetch(((SampleScan *) plan)->scanrelid, es->rtable);
-				custom_name = get_tablesample_method_name(rte->tablesample->tsmid);
-				pname = psprintf("Sample Scan (%s)", custom_name);
-				sname = "Sample Scan";
-			}
 			break;
 		case T_Material:
 			pname = sname = "Materialize";
@@ -1003,25 +952,42 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			pname = sname = "Group";
 			break;
 		case T_Agg:
-			sname = "Aggregate";
-			switch (((Agg *) plan)->aggstrategy)
 			{
-				case AGG_PLAIN:
-					pname = "Aggregate";
-					strategy = "Plain";
-					break;
-				case AGG_SORTED:
-					pname = "GroupAggregate";
-					strategy = "Sorted";
-					break;
-				case AGG_HASHED:
-					pname = "HashAggregate";
-					strategy = "Hashed";
-					break;
-				default:
-					pname = "Aggregate ???";
-					strategy = "???";
-					break;
+				Agg		   *agg = (Agg *) plan;
+
+				sname = "Aggregate";
+				switch (agg->aggstrategy)
+				{
+					case AGG_PLAIN:
+						pname = "Aggregate";
+						strategy = "Plain";
+						break;
+					case AGG_SORTED:
+						pname = "GroupAggregate";
+						strategy = "Sorted";
+						break;
+					case AGG_HASHED:
+						pname = "HashAggregate";
+						strategy = "Hashed";
+						break;
+					default:
+						pname = "Aggregate ???";
+						strategy = "???";
+						break;
+				}
+
+				if (DO_AGGSPLIT_SKIPFINAL(agg->aggsplit))
+				{
+					partialmode = "Partial";
+					pname = psprintf("%s %s", partialmode, pname);
+				}
+				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit))
+				{
+					partialmode = "Finalize";
+					pname = psprintf("%s %s", partialmode, pname);
+				}
+				else
+					partialmode = "Simple";
 			}
 			break;
 		case T_WindowAgg:
@@ -1098,6 +1064,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			appendStringInfoString(es->str, "->  ");
 			es->indent += 2;
 		}
+		if (plan->parallel_aware)
+			appendStringInfoString(es->str, "Parallel ");
 		appendStringInfoString(es->str, pname);
 		es->indent++;
 	}
@@ -1106,6 +1074,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		ExplainPropertyText("Node Type", sname, es);
 		if (strategy)
 			ExplainPropertyText("Strategy", strategy, es);
+		if (partialmode)
+			ExplainPropertyText("Partial Mode", partialmode, es);
 		if (operation)
 			ExplainPropertyText("Operation", operation, es);
 		if (relationship)
@@ -1114,11 +1084,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			ExplainPropertyText("Subplan Name", plan_name, es);
 		if (custom_name)
 			ExplainPropertyText("Custom Plan Provider", custom_name, es);
+		ExplainPropertyBool("Parallel Aware", plan->parallel_aware, es);
 	}
 
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_SampleScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
@@ -1132,9 +1104,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_CustomScan:
 			if (((Scan *) plan)->scanrelid > 0)
 				ExplainScanTarget((Scan *) plan, es);
-			break;
-		case T_SampleScan:
-			ExplainScanTarget((Scan *) plan, es);
 			break;
 		case T_IndexScan:
 			{
@@ -1381,16 +1350,41 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->analyze)
 				show_tidbitmap_info((BitmapHeapScanState *) planstate, es);
 			break;
+		case T_SampleScan:
+			show_tablesample(((SampleScan *) plan)->tablesample,
+							 planstate, ancestors, es);
+			/* FALL THRU to print additional fields the same as SeqScan */
 		case T_SeqScan:
 		case T_ValuesScan:
 		case T_CteScan:
 		case T_WorkTableScan:
 		case T_SubqueryScan:
-		case T_SampleScan:
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			break;
+		case T_Gather:
+			{
+				Gather	   *gather = (Gather *) plan;
+
+				show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
+				if (plan->qual)
+					show_instrumentation_count("Rows Removed by Filter", 1,
+											   planstate, es);
+				ExplainPropertyInteger("Workers Planned",
+									   gather->num_workers, es);
+				if (es->analyze)
+				{
+					int			nworkers;
+
+					nworkers = ((GatherState *) planstate)->nworkers_launched;
+					ExplainPropertyInteger("Workers Launched",
+										   nworkers, es);
+				}
+				if (gather->single_copy || es->format != EXPLAIN_FORMAT_TEXT)
+					ExplainPropertyBool("Single Copy", gather->single_copy, es);
+			}
 			break;
 		case T_FunctionScan:
 			if (es->verbose)
@@ -1530,108 +1524,73 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 	/* Show buffer usage */
 	if (es->buffers && planstate->instrument)
+		show_buffer_usage(es, &planstate->instrument->bufusage);
+
+	/* Show worker detail */
+	if (es->analyze && es->verbose && planstate->worker_instrument)
 	{
-		const BufferUsage *usage = &planstate->instrument->bufusage;
+		WorkerInstrumentation *w = planstate->worker_instrument;
+		bool		opened_group = false;
+		int			n;
 
-		if (es->format == EXPLAIN_FORMAT_TEXT)
+		for (n = 0; n < w->num_workers; ++n)
 		{
-			bool		has_shared = (usage->shared_blks_hit > 0 ||
-									  usage->shared_blks_read > 0 ||
-									  usage->shared_blks_dirtied > 0 ||
-									  usage->shared_blks_written > 0);
-			bool		has_local = (usage->local_blks_hit > 0 ||
-									 usage->local_blks_read > 0 ||
-									 usage->local_blks_dirtied > 0 ||
-									 usage->local_blks_written > 0);
-			bool		has_temp = (usage->temp_blks_read > 0 ||
-									usage->temp_blks_written > 0);
-			bool		has_timing = (!INSTR_TIME_IS_ZERO(usage->blk_read_time) ||
-								 !INSTR_TIME_IS_ZERO(usage->blk_write_time));
+			Instrumentation *instrument = &w->instrument[n];
+			double		nloops = instrument->nloops;
+			double		startup_sec;
+			double		total_sec;
+			double		rows;
 
-			/* Show only positive counter values. */
-			if (has_shared || has_local || has_temp)
+			if (nloops <= 0)
+				continue;
+			startup_sec = 1000.0 * instrument->startup / nloops;
+			total_sec = 1000.0 * instrument->total / nloops;
+			rows = instrument->ntuples / nloops;
+
+			if (es->format == EXPLAIN_FORMAT_TEXT)
 			{
 				appendStringInfoSpaces(es->str, es->indent * 2);
-				appendStringInfoString(es->str, "Buffers:");
-
-				if (has_shared)
-				{
-					appendStringInfoString(es->str, " shared");
-					if (usage->shared_blks_hit > 0)
-						appendStringInfo(es->str, " hit=%ld",
-										 usage->shared_blks_hit);
-					if (usage->shared_blks_read > 0)
-						appendStringInfo(es->str, " read=%ld",
-										 usage->shared_blks_read);
-					if (usage->shared_blks_dirtied > 0)
-						appendStringInfo(es->str, " dirtied=%ld",
-										 usage->shared_blks_dirtied);
-					if (usage->shared_blks_written > 0)
-						appendStringInfo(es->str, " written=%ld",
-										 usage->shared_blks_written);
-					if (has_local || has_temp)
-						appendStringInfoChar(es->str, ',');
-				}
-				if (has_local)
-				{
-					appendStringInfoString(es->str, " local");
-					if (usage->local_blks_hit > 0)
-						appendStringInfo(es->str, " hit=%ld",
-										 usage->local_blks_hit);
-					if (usage->local_blks_read > 0)
-						appendStringInfo(es->str, " read=%ld",
-										 usage->local_blks_read);
-					if (usage->local_blks_dirtied > 0)
-						appendStringInfo(es->str, " dirtied=%ld",
-										 usage->local_blks_dirtied);
-					if (usage->local_blks_written > 0)
-						appendStringInfo(es->str, " written=%ld",
-										 usage->local_blks_written);
-					if (has_temp)
-						appendStringInfoChar(es->str, ',');
-				}
-				if (has_temp)
-				{
-					appendStringInfoString(es->str, " temp");
-					if (usage->temp_blks_read > 0)
-						appendStringInfo(es->str, " read=%ld",
-										 usage->temp_blks_read);
-					if (usage->temp_blks_written > 0)
-						appendStringInfo(es->str, " written=%ld",
-										 usage->temp_blks_written);
-				}
-				appendStringInfoChar(es->str, '\n');
+				appendStringInfo(es->str, "Worker %d: ", n);
+				if (es->timing)
+					appendStringInfo(es->str,
+							 "actual time=%.3f..%.3f rows=%.0f loops=%.0f\n",
+									 startup_sec, total_sec, rows, nloops);
+				else
+					appendStringInfo(es->str,
+									 "actual rows=%.0f loops=%.0f\n",
+									 rows, nloops);
+				es->indent++;
+				if (es->buffers)
+					show_buffer_usage(es, &instrument->bufusage);
+				es->indent--;
 			}
-
-			/* As above, show only positive counter values. */
-			if (has_timing)
+			else
 			{
-				appendStringInfoSpaces(es->str, es->indent * 2);
-				appendStringInfoString(es->str, "I/O Timings:");
-				if (!INSTR_TIME_IS_ZERO(usage->blk_read_time))
-					appendStringInfo(es->str, " read=%0.3f",
-							  INSTR_TIME_GET_MILLISEC(usage->blk_read_time));
-				if (!INSTR_TIME_IS_ZERO(usage->blk_write_time))
-					appendStringInfo(es->str, " write=%0.3f",
-							 INSTR_TIME_GET_MILLISEC(usage->blk_write_time));
-				appendStringInfoChar(es->str, '\n');
+				if (!opened_group)
+				{
+					ExplainOpenGroup("Workers", "Workers", false, es);
+					opened_group = true;
+				}
+				ExplainOpenGroup("Worker", NULL, true, es);
+				ExplainPropertyInteger("Worker Number", n, es);
+
+				if (es->timing)
+				{
+					ExplainPropertyFloat("Actual Startup Time", startup_sec, 3, es);
+					ExplainPropertyFloat("Actual Total Time", total_sec, 3, es);
+				}
+				ExplainPropertyFloat("Actual Rows", rows, 0, es);
+				ExplainPropertyFloat("Actual Loops", nloops, 0, es);
+
+				if (es->buffers)
+					show_buffer_usage(es, &instrument->bufusage);
+
+				ExplainCloseGroup("Worker", NULL, true, es);
 			}
 		}
-		else
-		{
-			ExplainPropertyLong("Shared Hit Blocks", usage->shared_blks_hit, es);
-			ExplainPropertyLong("Shared Read Blocks", usage->shared_blks_read, es);
-			ExplainPropertyLong("Shared Dirtied Blocks", usage->shared_blks_dirtied, es);
-			ExplainPropertyLong("Shared Written Blocks", usage->shared_blks_written, es);
-			ExplainPropertyLong("Local Hit Blocks", usage->local_blks_hit, es);
-			ExplainPropertyLong("Local Read Blocks", usage->local_blks_read, es);
-			ExplainPropertyLong("Local Dirtied Blocks", usage->local_blks_dirtied, es);
-			ExplainPropertyLong("Local Written Blocks", usage->local_blks_written, es);
-			ExplainPropertyLong("Temp Read Blocks", usage->temp_blks_read, es);
-			ExplainPropertyLong("Temp Written Blocks", usage->temp_blks_written, es);
-			ExplainPropertyFloat("I/O Read Time", INSTR_TIME_GET_MILLISEC(usage->blk_read_time), 3, es);
-			ExplainPropertyFloat("I/O Write Time", INSTR_TIME_GET_MILLISEC(usage->blk_write_time), 3, es);
-		}
+
+		if (opened_group)
+			ExplainCloseGroup("Workers", "Workers", false, es);
 	}
 
 	/* Get ready to display the child plans */
@@ -1755,6 +1714,20 @@ show_plan_tlist(PlanState *planstate, List *ancestors, ExplainState *es)
 	if (IsA(plan, MergeAppend))
 		return;
 	if (IsA(plan, RecursiveUnion))
+		return;
+
+	/*
+	 * Likewise for ForeignScan that executes a direct INSERT/UPDATE/DELETE
+	 *
+	 * Note: the tlist for a ForeignScan that executes a direct INSERT/UPDATE
+	 * might contain subplan output expressions that are confusing in this
+	 * context.  The tlist for a ForeignScan that executes a direct UPDATE/
+	 * DELETE always contains "junk" target columns to identify the exact row
+	 * to update or delete, which would be confusing in this context.  So, we
+	 * suppress it in all the cases.
+	 */
+	if (IsA(plan, ForeignScan) &&
+		((ForeignScan *) plan)->operation != CMD_SELECT)
 		return;
 
 	/* Set up deparsing context */
@@ -2133,6 +2106,72 @@ show_sortorder_options(StringInfo buf, Node *sortexpr,
 }
 
 /*
+ * Show TABLESAMPLE properties
+ */
+static void
+show_tablesample(TableSampleClause *tsc, PlanState *planstate,
+				 List *ancestors, ExplainState *es)
+{
+	List	   *context;
+	bool		useprefix;
+	char	   *method_name;
+	List	   *params = NIL;
+	char	   *repeatable;
+	ListCell   *lc;
+
+	/* Set up deparsing context */
+	context = set_deparse_context_planstate(es->deparse_cxt,
+											(Node *) planstate,
+											ancestors);
+	useprefix = list_length(es->rtable) > 1;
+
+	/* Get the tablesample method name */
+	method_name = get_func_name(tsc->tsmhandler);
+
+	/* Deparse parameter expressions */
+	foreach(lc, tsc->args)
+	{
+		Node	   *arg = (Node *) lfirst(lc);
+
+		params = lappend(params,
+						 deparse_expression(arg, context,
+											useprefix, false));
+	}
+	if (tsc->repeatable)
+		repeatable = deparse_expression((Node *) tsc->repeatable, context,
+										useprefix, false);
+	else
+		repeatable = NULL;
+
+	/* Print results */
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+	{
+		bool		first = true;
+
+		appendStringInfoSpaces(es->str, es->indent * 2);
+		appendStringInfo(es->str, "Sampling: %s (", method_name);
+		foreach(lc, params)
+		{
+			if (!first)
+				appendStringInfoString(es->str, ", ");
+			appendStringInfoString(es->str, (const char *) lfirst(lc));
+			first = false;
+		}
+		appendStringInfoChar(es->str, ')');
+		if (repeatable)
+			appendStringInfo(es->str, " REPEATABLE (%s)", repeatable);
+		appendStringInfoChar(es->str, '\n');
+	}
+	else
+	{
+		ExplainPropertyText("Sampling Method", method_name, es);
+		ExplainPropertyList("Sampling Parameters", params, es);
+		if (repeatable)
+			ExplainPropertyText("Repeatable Seed", repeatable, es);
+	}
+}
+
+/*
  * If it's EXPLAIN ANALYZE, show tuplesort stats for a sort node
  */
 static void
@@ -2278,8 +2317,16 @@ show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es)
 	FdwRoutine *fdwroutine = fsstate->fdwroutine;
 
 	/* Let the FDW emit whatever fields it wants */
-	if (fdwroutine->ExplainForeignScan != NULL)
-		fdwroutine->ExplainForeignScan(fsstate, es);
+	if (((ForeignScan *) fsstate->ss.ps.plan)->operation != CMD_SELECT)
+	{
+		if (fdwroutine->ExplainDirectModify != NULL)
+			fdwroutine->ExplainDirectModify(fsstate, es);
+	}
+	else
+	{
+		if (fdwroutine->ExplainForeignScan != NULL)
+			fdwroutine->ExplainForeignScan(fsstate, es);
+	}
 }
 
 /*
@@ -2306,6 +2353,116 @@ explain_get_index_name(Oid indexId)
 		result = quote_identifier(result);
 	}
 	return result;
+}
+
+/*
+ * Show buffer usage details.
+ */
+static void
+show_buffer_usage(ExplainState *es, const BufferUsage *usage)
+{
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+	{
+		bool		has_shared = (usage->shared_blks_hit > 0 ||
+								  usage->shared_blks_read > 0 ||
+								  usage->shared_blks_dirtied > 0 ||
+								  usage->shared_blks_written > 0);
+		bool		has_local = (usage->local_blks_hit > 0 ||
+								 usage->local_blks_read > 0 ||
+								 usage->local_blks_dirtied > 0 ||
+								 usage->local_blks_written > 0);
+		bool		has_temp = (usage->temp_blks_read > 0 ||
+								usage->temp_blks_written > 0);
+		bool		has_timing = (!INSTR_TIME_IS_ZERO(usage->blk_read_time) ||
+								  !INSTR_TIME_IS_ZERO(usage->blk_write_time));
+
+		/* Show only positive counter values. */
+		if (has_shared || has_local || has_temp)
+		{
+			appendStringInfoSpaces(es->str, es->indent * 2);
+			appendStringInfoString(es->str, "Buffers:");
+
+			if (has_shared)
+			{
+				appendStringInfoString(es->str, " shared");
+				if (usage->shared_blks_hit > 0)
+					appendStringInfo(es->str, " hit=%ld",
+									 usage->shared_blks_hit);
+				if (usage->shared_blks_read > 0)
+					appendStringInfo(es->str, " read=%ld",
+									 usage->shared_blks_read);
+				if (usage->shared_blks_dirtied > 0)
+					appendStringInfo(es->str, " dirtied=%ld",
+									 usage->shared_blks_dirtied);
+				if (usage->shared_blks_written > 0)
+					appendStringInfo(es->str, " written=%ld",
+									 usage->shared_blks_written);
+				if (has_local || has_temp)
+					appendStringInfoChar(es->str, ',');
+			}
+			if (has_local)
+			{
+				appendStringInfoString(es->str, " local");
+				if (usage->local_blks_hit > 0)
+					appendStringInfo(es->str, " hit=%ld",
+									 usage->local_blks_hit);
+				if (usage->local_blks_read > 0)
+					appendStringInfo(es->str, " read=%ld",
+									 usage->local_blks_read);
+				if (usage->local_blks_dirtied > 0)
+					appendStringInfo(es->str, " dirtied=%ld",
+									 usage->local_blks_dirtied);
+				if (usage->local_blks_written > 0)
+					appendStringInfo(es->str, " written=%ld",
+									 usage->local_blks_written);
+				if (has_temp)
+					appendStringInfoChar(es->str, ',');
+			}
+			if (has_temp)
+			{
+				appendStringInfoString(es->str, " temp");
+				if (usage->temp_blks_read > 0)
+					appendStringInfo(es->str, " read=%ld",
+									 usage->temp_blks_read);
+				if (usage->temp_blks_written > 0)
+					appendStringInfo(es->str, " written=%ld",
+									 usage->temp_blks_written);
+			}
+			appendStringInfoChar(es->str, '\n');
+		}
+
+		/* As above, show only positive counter values. */
+		if (has_timing)
+		{
+			appendStringInfoSpaces(es->str, es->indent * 2);
+			appendStringInfoString(es->str, "I/O Timings:");
+			if (!INSTR_TIME_IS_ZERO(usage->blk_read_time))
+				appendStringInfo(es->str, " read=%0.3f",
+							  INSTR_TIME_GET_MILLISEC(usage->blk_read_time));
+			if (!INSTR_TIME_IS_ZERO(usage->blk_write_time))
+				appendStringInfo(es->str, " write=%0.3f",
+							 INSTR_TIME_GET_MILLISEC(usage->blk_write_time));
+			appendStringInfoChar(es->str, '\n');
+		}
+	}
+	else
+	{
+		ExplainPropertyLong("Shared Hit Blocks", usage->shared_blks_hit, es);
+		ExplainPropertyLong("Shared Read Blocks", usage->shared_blks_read, es);
+		ExplainPropertyLong("Shared Dirtied Blocks", usage->shared_blks_dirtied, es);
+		ExplainPropertyLong("Shared Written Blocks", usage->shared_blks_written, es);
+		ExplainPropertyLong("Local Hit Blocks", usage->local_blks_hit, es);
+		ExplainPropertyLong("Local Read Blocks", usage->local_blks_read, es);
+		ExplainPropertyLong("Local Dirtied Blocks", usage->local_blks_dirtied, es);
+		ExplainPropertyLong("Local Written Blocks", usage->local_blks_written, es);
+		ExplainPropertyLong("Temp Read Blocks", usage->temp_blks_read, es);
+		ExplainPropertyLong("Temp Written Blocks", usage->temp_blks_written, es);
+		if (track_io_timing)
+		{
+			ExplainPropertyFloat("I/O Read Time", INSTR_TIME_GET_MILLISEC(usage->blk_read_time), 3, es);
+			ExplainPropertyFloat("I/O Write Time", INSTR_TIME_GET_MILLISEC(usage->blk_write_time), 3, es);
+		}
+	}
 }
 
 /*
@@ -2389,13 +2546,13 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_SampleScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_ForeignScan:
 		case T_CustomScan:
-		case T_SampleScan:
 		case T_ModifyTable:
 			/* Assert it's on a real relation */
 			Assert(rte->rtekind == RTE_RELATION);
@@ -2558,8 +2715,10 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 			}
 		}
 
-		/* Give FDW a chance */
-		if (fdwroutine && fdwroutine->ExplainForeignModify != NULL)
+		/* Give FDW a chance if needed */
+		if (!resultRelInfo->ri_usesFdwDirectModify &&
+			fdwroutine != NULL &&
+			fdwroutine->ExplainForeignModify != NULL)
 		{
 			List	   *fdw_private = (List *) list_nth(node->fdwPrivLists, j);
 
@@ -2673,6 +2832,21 @@ ExplainSubPlans(List *plans, List *ancestors,
 		SubPlanState *sps = (SubPlanState *) lfirst(lst);
 		SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
 
+		/*
+		 * There can be multiple SubPlan nodes referencing the same physical
+		 * subplan (same plan_id, which is its index in PlannedStmt.subplans).
+		 * We should print a subplan only once, so track which ones we already
+		 * printed.  This state must be global across the plan tree, since the
+		 * duplicate nodes could be in different plan nodes, eg both a bitmap
+		 * indexscan's indexqual and its parent heapscan's recheck qual.  (We
+		 * do not worry too much about which plan node we show the subplan as
+		 * attached to in such cases.)
+		 */
+		if (bms_is_member(sp->plan_id, es->printed_subplans))
+			continue;
+		es->printed_subplans = bms_add_member(es->printed_subplans,
+											  sp->plan_id);
+
 		ExplainNode(sps->planstate, ancestors,
 					relationship, sp->plan_name, es);
 	}
@@ -2686,9 +2860,9 @@ ExplainCustomChildren(CustomScanState *css, List *ancestors, ExplainState *es)
 {
 	ListCell   *cell;
 	const char *label =
-		(list_length(css->custom_ps) != 1 ? "children" : "child");
+	(list_length(css->custom_ps) != 1 ? "children" : "child");
 
-	foreach (cell, css->custom_ps)
+	foreach(cell, css->custom_ps)
 		ExplainNode((PlanState *) lfirst(cell), ancestors, label, NULL, es);
 }
 
@@ -2909,6 +3083,15 @@ ExplainPropertyFloat(const char *qlabel, double value, int ndigits,
 
 	snprintf(buf, sizeof(buf), "%.*f", ndigits, value);
 	ExplainProperty(qlabel, buf, true, es);
+}
+
+/*
+ * Explain a bool-valued property.
+ */
+void
+ExplainPropertyBool(const char *qlabel, bool value, ExplainState *es)
+{
+	ExplainProperty(qlabel, value ? "true" : "false", true, es);
 }
 
 /*

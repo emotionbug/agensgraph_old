@@ -588,7 +588,6 @@ SELECT user_relns() AS user_relns
  arrtest
  b
  b_star
- bb
  box_tbl
  bprime
  brinopers
@@ -648,6 +647,16 @@ SELECT user_relns() AS user_relns
  lseg_tbl
  main_table
  money_data
+ mvtest_bb
+ mvtest_t
+ mvtest_tm
+ mvtest_tmm
+ mvtest_tv
+ mvtest_tvm
+ mvtest_tvmm
+ mvtest_tvv
+ mvtest_tvvm
+ mvtest_tvvmv
  num_data
  num_exp_add
  num_exp_div
@@ -671,6 +680,8 @@ SELECT user_relns() AS user_relns
  random_tbl
  real_city
  reltime_tbl
+ rls_tbl
+ rls_tbl_force
  road
  shighway
  slow_emp4000
@@ -680,12 +691,14 @@ SELECT user_relns() AS user_relns
  stud_emp
  student
  subselect_tbl
- t
  tenk1
  tenk2
  test_range_excl
  test_range_gist
  test_range_spgist
+ test_tablesample
+ test_tablesample_v1
+ test_tablesample_v2
  test_tsvector
  testjsonb
  text_tbl
@@ -694,15 +707,7 @@ SELECT user_relns() AS user_relns
  timestamptz_tbl
  timetz_tbl
  tinterval_tbl
- tm
- tmm
  toyemp
- tv
- tvm
- tvmm
- tvv
- tvvm
- tvvmv
  varchar_tbl
  xacttest
 (132 rows)

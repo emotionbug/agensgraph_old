@@ -243,14 +243,15 @@
   &nls;
   &plhandler;
   &fdwhandler;
+  &tablesample-method;
   &custom-scan;
   &geqo;
   &indexam;
+  &generic-wal;
   &gist;
   &spgist;
   &gin;
   &brin;
-  &tablesample-method;
   &storage;
   &bki;
   &planstats;
