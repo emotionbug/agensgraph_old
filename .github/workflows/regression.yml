@@ -15,7 +15,7 @@ jobs:
         env:
           CC: 'clang'
           CXX: 'clang++'
-        run: ./configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql
+        run: ./configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql --with-llvm
       - name: make install
         run: make install -j$(nproc)
       - name: initdb
