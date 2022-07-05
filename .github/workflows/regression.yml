@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install depedencies
-        run: sudo apt-get install -y llvm-7 clang clang++
+        run: sudo apt-get install -y llvm-7 clang-7 clang++-7
       - name: configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql
         env:
           CC: 'clang-7'
