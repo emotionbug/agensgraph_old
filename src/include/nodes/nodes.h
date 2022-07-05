@@ -413,6 +413,7 @@ typedef enum NodeTag
 	/*
 	 * TAGS FOR CYPHER CLAUSES
 	 */
+	T_ModifyGraphPath,
 	T_CreateGraphStmt,
 	T_CreateLabelStmt,
 	T_CypherStmt,

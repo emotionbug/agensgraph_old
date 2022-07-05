@@ -167,7 +167,7 @@ static const Oid object_classes[] = {
 	ExtensionRelationId,		/* OCLASS_EXTENSION */
 	EventTriggerRelationId,		/* OCLASS_EVENT_TRIGGER */
 	PolicyRelationId,			/* OCLASS_POLICY */
-	TransformRelationId			/* OCLASS_TRANSFORM */
+	TransformRelationId,			/* OCLASS_TRANSFORM */
 	/* for Cypher clause */
 	GraphRelationId,			/* OCLASS_GRAPH */
 	LabelRelationId				/* OCLASS_LABEL */

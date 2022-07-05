@@ -132,9 +132,9 @@ SeqRecheck(SeqScanState *node, TupleTableSlot *slot)
 TupleTableSlot *
 ExecSeqScan(SeqScanState *node)
 {
-	if (node->ss_skipLabelScan)
+	if (node->ss.ss_skipLabelScan)
 	{
-		node->ss_skipLabelScan = false;
+		node->ss.ss_skipLabelScan = false;
 		return NULL;
 	}
 
@@ -171,7 +171,7 @@ InitScanRelation(SeqScanState *node, EState *estate, int eflags)
 static void
 InitScanLabelSkipExpr(SeqScanState *node)
 {
-	List	   *qual = node->ps.plan->qual;
+	List	   *qual = node->ss.ps.plan->qual;
 	ListCell   *la;
 
 	AssertArg(node->ss_isLabel);
@@ -197,7 +197,7 @@ InitScanLabelSkipExpr(SeqScanState *node)
 		if (xstate == NULL)
 			continue;
 
-		node->ss_labelSkipExpr = xstate;
+		node->ss.ss_labelSkipExpr = xstate;
 		break;
 	}
 }
@@ -230,7 +230,7 @@ IsGraphidColumn(SeqScanState *node, Node *expr)
 
 	/* TODO: use Anum_vertex_id */
 	return (IsA(expr, Var) &&
-			var->varno == ((SeqScan *) node->ps.plan)->scanrelid &&
+			var->varno == ((SeqScan *) node->ss.ps.plan)->scanrelid &&
 			var->varattno == 1);
 }
 
