@@ -17,7 +17,7 @@ jobs:
         env:
           CC: 'clang-7'
           CXX: 'clang++-7'
-        run: ./configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql --with-llvm
+        run: ./configure --prefix=/home/runner/work/agensgraph/agensgraph/pgsql --with-llvm CC=clang CFLAGS="-O0 -fstrict-enums -fno-signed-zeros"
       - name: make install
         run: make install -j$(nproc)
       - name: initdb
