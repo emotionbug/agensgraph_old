@@ -42,6 +42,7 @@ typedef enum
 {
 	/* When modifying this enum, update priority tables in pg_dump_sort.c! */
 	DO_NAMESPACE,
+	DO_GRAPH,
 	DO_EXTENSION,
 	DO_TYPE,
 	DO_SHELL_TYPE,
@@ -54,6 +55,7 @@ typedef enum
 	DO_COLLATION,
 	DO_CONVERSION,
 	DO_TABLE,
+	DO_LABEL,
 	DO_ATTRDEF,
 	DO_INDEX,
 	DO_INDEX_ATTACH,
@@ -637,6 +639,18 @@ typedef struct _extensionMemberId
 	ExtensionInfo *ext;			/* owning extension */
 } ExtensionMemberId;
 
+typedef struct _graphInfo
+{
+	struct _namespaceInfo parent;
+} GraphInfo;
+
+typedef struct _labelInfo
+{
+	struct _tableInfo parent;
+	char		labkind;
+} LabelInfo;
+
+
 /* global decls */
 extern bool force_quotes;		/* double-quotes for identifiers flag */
 
@@ -694,7 +708,8 @@ extern OpfamilyInfo *getOpfamilies(Archive *fout, int *numOpfamilies);
 extern CollInfo *getCollations(Archive *fout, int *numCollations);
 extern ConvInfo *getConversions(Archive *fout, int *numConversions);
 extern TableInfo *getTables(Archive *fout, int *numTables);
-extern void getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables);
+extern void getOwnedSeqs(Archive *fout, TableInfo* tblinfo, int numTables);
+extern void getOwnedSeqsForLabel(Archive *fout, LabelInfo tblinfo[], int numTables);
 extern InhInfo *getInherits(Archive *fout, int *numInherits);
 extern void getIndexes(Archive *fout, TableInfo tblinfo[], int numTables);
 extern void getExtendedStatistics(Archive *fout);
@@ -726,4 +741,10 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
 
+/* AgensGraphs */
+GraphInfo *getGraphs(Archive *fout, int *numGraphs);
+extern GraphInfo *findGraphByOid(Oid oid);
+
+extern LabelInfo *getLabels(Archive *fout, int *numLabels);
+extern void getLabelAttrs(Archive *fout, LabelInfo *tbinfo, int numLabels);
 #endif							/* PG_DUMP_H */

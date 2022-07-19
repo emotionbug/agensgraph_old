@@ -36,6 +36,7 @@
 static const int dbObjectTypePriority[] =
 {
 	1,							/* DO_NAMESPACE */
+	1,							/* DO_GRAPH */
 	4,							/* DO_EXTENSION */
 	5,							/* DO_TYPE */
 	5,							/* DO_SHELL_TYPE */
@@ -48,6 +49,7 @@ static const int dbObjectTypePriority[] =
 	3,							/* DO_COLLATION */
 	11,							/* DO_CONVERSION */
 	18,							/* DO_TABLE */
+	18,							/* DO_LABEL */
 	20,							/* DO_ATTRDEF */
 	28,							/* DO_INDEX */
 	29,							/* DO_INDEX_ATTACH */
@@ -764,7 +766,7 @@ repairMatViewBoundaryMultiLoop(DumpableObject *boundaryobj,
 	/* remove boundary's dependency on object after it in loop */
 	removeObjectDependency(boundaryobj, nextobj->dumpId);
 	/* if that object is a matview, mark it as postponed into post-data */
-	if (nextobj->objType == DO_TABLE)
+	if (nextobj->objType == DO_TABLE || nextobj->objType == DO_LABEL)
 	{
 		TableInfo  *nextinfo = (TableInfo *) nextobj;
 
@@ -897,7 +899,7 @@ repairDependencyLoop(DumpableObject **loop,
 
 	/* View (including matview) and its ON SELECT rule */
 	if (nLoop == 2 &&
-		loop[0]->objType == DO_TABLE &&
+		(loop[0]->objType == DO_TABLE || loop[0]->objType == DO_LABEL) && 
 		loop[1]->objType == DO_RULE &&
 		(((TableInfo *) loop[0])->relkind == RELKIND_VIEW ||
 		 ((TableInfo *) loop[0])->relkind == RELKIND_MATVIEW) &&
@@ -909,7 +911,7 @@ repairDependencyLoop(DumpableObject **loop,
 		return;
 	}
 	if (nLoop == 2 &&
-		loop[1]->objType == DO_TABLE &&
+		(loop[1]->objType == DO_TABLE || loop[1]->objType == DO_LABEL) &&
 		loop[0]->objType == DO_RULE &&
 		(((TableInfo *) loop[1])->relkind == RELKIND_VIEW ||
 		 ((TableInfo *) loop[1])->relkind == RELKIND_MATVIEW) &&
@@ -926,7 +928,7 @@ repairDependencyLoop(DumpableObject **loop,
 	{
 		for (i = 0; i < nLoop; i++)
 		{
-			if (loop[i]->objType == DO_TABLE &&
+			if ((loop[i]->objType == DO_TABLE || loop[i]->objType == DO_LABEL) &&
 				((TableInfo *) loop[i])->relkind == RELKIND_VIEW)
 			{
 				for (j = 0; j < nLoop; j++)
@@ -949,7 +951,7 @@ repairDependencyLoop(DumpableObject **loop,
 	{
 		for (i = 0; i < nLoop; i++)
 		{
-			if (loop[i]->objType == DO_TABLE &&
+			if ((loop[i]->objType == DO_TABLE || loop[i]->objType == DO_LABEL) &&
 				((TableInfo *) loop[i])->relkind == RELKIND_MATVIEW)
 			{
 				for (j = 0; j < nLoop; j++)
@@ -969,7 +971,7 @@ repairDependencyLoop(DumpableObject **loop,
 
 	/* Table and CHECK constraint */
 	if (nLoop == 2 &&
-		loop[0]->objType == DO_TABLE &&
+		(loop[0]->objType == DO_TABLE || loop[0]->objType == DO_LABEL) &&
 		loop[1]->objType == DO_CONSTRAINT &&
 		((ConstraintInfo *) loop[1])->contype == 'c' &&
 		((ConstraintInfo *) loop[1])->contable == (TableInfo *) loop[0])
@@ -978,7 +980,7 @@ repairDependencyLoop(DumpableObject **loop,
 		return;
 	}
 	if (nLoop == 2 &&
-		loop[1]->objType == DO_TABLE &&
+		(loop[1]->objType == DO_TABLE || loop[1]->objType == DO_LABEL) &&
 		loop[0]->objType == DO_CONSTRAINT &&
 		((ConstraintInfo *) loop[0])->contype == 'c' &&
 		((ConstraintInfo *) loop[0])->contable == (TableInfo *) loop[1])
@@ -992,7 +994,7 @@ repairDependencyLoop(DumpableObject **loop,
 	{
 		for (i = 0; i < nLoop; i++)
 		{
-			if (loop[i]->objType == DO_TABLE)
+			if (loop[i]->objType == DO_TABLE || loop[i]->objType == DO_LABEL)
 			{
 				for (j = 0; j < nLoop; j++)
 				{
@@ -1010,7 +1012,7 @@ repairDependencyLoop(DumpableObject **loop,
 
 	/* Table and attribute default */
 	if (nLoop == 2 &&
-		loop[0]->objType == DO_TABLE &&
+		(loop[0]->objType == DO_TABLE || loop[0]->objType == DO_LABEL) &&
 		loop[1]->objType == DO_ATTRDEF &&
 		((AttrDefInfo *) loop[1])->adtable == (TableInfo *) loop[0])
 	{
@@ -1018,7 +1020,7 @@ repairDependencyLoop(DumpableObject **loop,
 		return;
 	}
 	if (nLoop == 2 &&
-		loop[1]->objType == DO_TABLE &&
+		(loop[1]->objType == DO_TABLE || loop[1]->objType == DO_LABEL) &&
 		loop[0]->objType == DO_ATTRDEF &&
 		((AttrDefInfo *) loop[0])->adtable == (TableInfo *) loop[1])
 	{
@@ -1048,7 +1050,7 @@ repairDependencyLoop(DumpableObject **loop,
 	{
 		for (i = 0; i < nLoop; i++)
 		{
-			if (loop[i]->objType == DO_TABLE)
+			if (loop[i]->objType == DO_TABLE || loop[i]->objType == DO_LABEL)
 			{
 				for (j = 0; j < nLoop; j++)
 				{
@@ -1107,7 +1109,7 @@ repairDependencyLoop(DumpableObject **loop,
 	/* Loop of table with itself, happens with generated columns */
 	if (nLoop == 1)
 	{
-		if (loop[0]->objType == DO_TABLE)
+		if (loop[0]->objType == DO_TABLE || loop[0]->objType == DO_LABEL)
 		{
 			removeObjectDependency(loop[0], loop[0]->dumpId);
 			return;
@@ -1174,6 +1176,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 					 "SCHEMA %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
+		case DO_GRAPH:
+			snprintf(buf, bufsize,
+					 "GRAPH %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
 		case DO_EXTENSION:
 			snprintf(buf, bufsize,
 					 "EXTENSION %s  (ID %d OID %u)",
@@ -1232,6 +1239,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 		case DO_TABLE:
 			snprintf(buf, bufsize,
 					 "TABLE %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_LABEL:
+			snprintf(buf, bufsize,
+					 "LABEL %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
 		case DO_ATTRDEF:

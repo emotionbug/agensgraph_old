@@ -48,19 +48,23 @@ static int	numCatalogIds = 0;
  * pg_dump.c may have already established pointers between items.)
  */
 static DumpableObject **tblinfoindex;
+static DumpableObject **lblinfoindex;
 static DumpableObject **typinfoindex;
 static DumpableObject **funinfoindex;
 static DumpableObject **oprinfoindex;
 static DumpableObject **collinfoindex;
 static DumpableObject **nspinfoindex;
+static DumpableObject **graphinfoindex;
 static DumpableObject **extinfoindex;
 static int	numTables;
+static int	numLabels;
 static int	numTypes;
 static int	numFuncs;
 static int	numOperators;
 static int	numCollations;
 static int	numNamespaces;
 static int	numExtensions;
+static int	numGraphs;
 
 /* This is an array of object identities, not actual DumpableObjects */
 static ExtensionMemberId *extmembers;
@@ -115,6 +119,8 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	int			numDefaultACLs;
 	int			numEventTriggers;
 
+	GraphInfo  *graphInfo;
+	LabelInfo *lblinfo;
 	/*
 	 * We must read extensions and extension membership info first, because
 	 * extension membership needs to be consultable during decisions about
@@ -131,6 +137,10 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	nspinfo = getNamespaces(fout, &numNamespaces);
 	nspinfoindex = buildIndexArray(nspinfo, numNamespaces, sizeof(NamespaceInfo));
 
+	pg_log_info("reading graphs");
+	graphInfo = getGraphs(fout, &numGraphs);
+	graphinfoindex = buildIndexArray(graphInfo, numGraphs, sizeof(GraphInfo));
+
 	/*
 	 * getTables should be done as soon as possible, so as to minimize the
 	 * window between starting our transaction and acquiring per-table locks.
@@ -141,8 +151,13 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	tblinfo = getTables(fout, &numTables);
 	tblinfoindex = buildIndexArray(tblinfo, numTables, sizeof(TableInfo));
 
-	/* Do this after we've built tblinfoindex */
+	pg_log_info("reading user-defined labels");
+	lblinfo = getLabels(fout, &numLabels);
+	lblinfoindex = buildIndexArray(lblinfo, numLabels, sizeof(LabelInfo));
+
+	/* Do this after we've built tblinfoindex, lblinfoindex */
 	getOwnedSeqs(fout, tblinfo, numTables);
+	getOwnedSeqsForLabel(fout, lblinfo, numLabels);
 
 	pg_log_info("reading user-defined functions");
 	funinfo = getFuncs(fout, &numFuncs);
@@ -220,9 +235,11 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	/* Link tables to parents, mark parents of target tables interesting */
 	pg_log_info("finding inheritance relationships");
 	flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
+	flagInhTables(fout, (TableInfo *) lblinfo, numLabels, inhinfo, numInherits);
 
 	pg_log_info("reading column info for interesting tables");
 	getTableAttrs(fout, tblinfo, numTables);
+	getLabelAttrs(fout, lblinfo, numLabels);
 
 	pg_log_info("flagging inherited columns in subtables");
 	flagInhAttrs(fout->dopt, tblinfo, numTables);
@@ -826,7 +843,12 @@ removeObjectDependency(DumpableObject *dobj, DumpId refId)
 TableInfo *
 findTableByOid(Oid oid)
 {
-	return (TableInfo *) findObjectByOid(oid, tblinfoindex, numTables);
+	TableInfo *tableInfo = (TableInfo *) findObjectByOid(oid, tblinfoindex, numTables);
+	if (tableInfo == NULL)
+	{
+		return (TableInfo *) findObjectByOid(oid, lblinfoindex, numLabels);
+	}
+	return tableInfo;
 }
 
 /*
@@ -1107,4 +1129,16 @@ strInArray(const char *pattern, char **arr, int arr_size)
 			return i;
 	}
 	return -1;
+}
+
+/* == AgensGraph == */
+/*
+ * findGraphByOid
+ *	  finds the entry (in nspinfo) of the namespace with the given oid
+ *	  returns NULL if not found
+ */
+GraphInfo *
+findGraphByOid(Oid oid)
+{
+	return (GraphInfo *) findObjectByOid(oid, graphinfoindex, numGraphs);
 }

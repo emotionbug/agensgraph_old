@@ -1068,34 +1068,48 @@ TocEntry *
 ArchiveEntry(Archive *AHX, CatalogId catalogId, DumpId dumpId,
 			 ArchiveOpts *opts)
 {
+	pg_log_info("ArchiveEntry1");
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	TocEntry   *newToc;
 
 	newToc = (TocEntry *) pg_malloc0(sizeof(TocEntry));
 
+	pg_log_info("ArchiveEntry2");
 	AH->tocCount++;
 	if (dumpId > AH->maxDumpId)
 		AH->maxDumpId = dumpId;
 
+	pg_log_info("ArchiveEntry3");
 	newToc->prev = AH->toc->prev;
 	newToc->next = AH->toc;
 	AH->toc->prev->next = newToc;
 	AH->toc->prev = newToc;
 
+	pg_log_info("ArchiveEntry4");
 	newToc->catalogId = catalogId;
 	newToc->dumpId = dumpId;
 	newToc->section = opts->section;
 
+	pg_log_info("ArchiveEntry5");
 	newToc->tag = pg_strdup(opts->tag);
+	pg_log_info("ArchiveEntry6");
 	newToc->namespace = opts->namespace ? pg_strdup(opts->namespace) : NULL;
+	pg_log_info("ArchiveEntry6");
 	newToc->tablespace = opts->tablespace ? pg_strdup(opts->tablespace) : NULL;
+	pg_log_info("ArchiveEntry6");
 	newToc->tableam = opts->tableam ? pg_strdup(opts->tableam) : NULL;
+	pg_log_info("ArchiveEntry6");
 	newToc->owner = opts->owner ? pg_strdup(opts->owner) : NULL;
+	pg_log_info("ArchiveEntry6");
 	newToc->desc = pg_strdup(opts->description);
+	pg_log_info("ArchiveEntry6");
 	newToc->defn = opts->createStmt ? pg_strdup(opts->createStmt) : NULL;
+	pg_log_info("ArchiveEntry6");
 	newToc->dropStmt = opts->dropStmt ? pg_strdup(opts->dropStmt) : NULL;
+	pg_log_info("ArchiveEntry6");
 	newToc->copyStmt = opts->copyStmt ? pg_strdup(opts->copyStmt) : NULL;
 
+	pg_log_info("ArchiveEntry6");
 	if (opts->nDeps > 0)
 	{
 		newToc->dependencies = (DumpId *) pg_malloc(opts->nDeps * sizeof(DumpId));
@@ -1108,10 +1122,12 @@ ArchiveEntry(Archive *AHX, CatalogId catalogId, DumpId dumpId,
 		newToc->nDeps = 0;
 	}
 
+	pg_log_info("ArchiveEntry7");
 	newToc->dataDumper = opts->dumpFn;
 	newToc->dataDumperArg = opts->dumpArg;
 	newToc->hadDumper = opts->dumpFn ? true : false;
 
+	pg_log_info("ArchiveEntry8");
 	newToc->formatData = NULL;
 	newToc->dataLength = 0;
 
@@ -3513,6 +3529,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 		strcmp(type, "DATABASE") == 0 ||
 		strcmp(type, "PROCEDURAL LANGUAGE") == 0 ||
 		strcmp(type, "SCHEMA") == 0 ||
+		strcmp(type, "GRAPH") == 0 ||
 		strcmp(type, "EVENT TRIGGER") == 0 ||
 		strcmp(type, "FOREIGN DATA WRAPPER") == 0 ||
 		strcmp(type, "SERVER") == 0 ||
@@ -3652,6 +3669,10 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 	{
 		ahprintf(AH, "CREATE SCHEMA %s;\n\n\n", fmtId(te->tag));
 	}
+	else if (ropt->noOwner && strcmp(te->desc, "GRAPH")== 0)
+	{
+		ahprintf(AH, "CREATE GRAPH %s SCHEMA;\n\n\n", fmtId(te->tag));
+	}
 	else
 	{
 		if (te->defn && strlen(te->defn) > 0)
@@ -3681,6 +3702,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			strcmp(te->desc, "PROCEDURE") == 0 ||
 			strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
 			strcmp(te->desc, "SCHEMA") == 0 ||
+			strcmp(te->desc, "GRAPH") == 0 ||
 			strcmp(te->desc, "EVENT TRIGGER") == 0 ||
 			strcmp(te->desc, "TABLE") == 0 ||
 			strcmp(te->desc, "TYPE") == 0 ||
