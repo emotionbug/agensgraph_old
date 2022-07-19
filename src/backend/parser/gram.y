@@ -15770,6 +15770,7 @@ CreateGraphStmt:
 					n->graphname = $3;
 					n->authrole = $5;
 					n->if_not_exists = false;
+					n->kind = CGSK_ALL;
 					$$ = (Node *) n;
 				}
 			| CREATE GRAPH ColId
@@ -15778,6 +15779,7 @@ CreateGraphStmt:
 					n->graphname = $3;
 					n->authrole = NULL;
 					n->if_not_exists = false;
+					n->kind = CGSK_ALL;
 					$$ = (Node *) n;
 				}
 			| CREATE GRAPH IF_P NOT EXISTS ColId AUTHORIZATION RoleSpec
@@ -15786,6 +15788,7 @@ CreateGraphStmt:
 					n->graphname = $6;
 					n->authrole = $8;
 					n->if_not_exists = true;
+					n->kind = CGSK_ALL;
 					$$ = (Node *) n;
 				}
 			| CREATE GRAPH IF_P NOT EXISTS ColId
@@ -15794,6 +15797,43 @@ CreateGraphStmt:
 					n->graphname = $6;
 					n->authrole = NULL;
 					n->if_not_exists = true;
+					n->kind = CGSK_ALL;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId SCHEMA
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->kind = CGSK_SCHEMA;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId ELABEL
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->kind = CGSK_ELABEL;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId VLABEL
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->kind = CGSK_VLABEL;
+					$$ = (Node *) n;
+				}
+			| CREATE GRAPH ColId SEQUENCE
+				{
+					CreateGraphStmt *n = makeNode(CreateGraphStmt);
+					n->graphname = $3;
+					n->authrole = NULL;
+					n->if_not_exists = false;
+					n->kind = CGSK_SEQUENCE;
 					$$ = (Node *) n;
 				}
 		;
@@ -15811,6 +15851,7 @@ CreateLabelStmt:
 					n->tablespacename = $8;
 					n->if_not_exists = false;
 					n->disable_index = $5;
+					n->is_base = false;
 					$$ = (Node *)n;
 				}
 			| CREATE OptNoLog VLABEL IF_P NOT EXISTS name opt_disable_index
@@ -15825,6 +15866,7 @@ CreateLabelStmt:
 					n->tablespacename = $11;
 					n->if_not_exists = true;
 					n->disable_index = $8;
+					n->is_base = false;
 					$$ = (Node *)n;
 				}
 			| CREATE OptNoLog ELABEL name opt_disable_index
@@ -15839,6 +15881,7 @@ CreateLabelStmt:
 					n->tablespacename = $8;
 					n->if_not_exists = false;
 					n->disable_index = $5;
+					n->is_base = false;
 					$$ = (Node *)n;
 				}
 			| CREATE OptNoLog ELABEL IF_P NOT EXISTS name opt_disable_index
@@ -15853,6 +15896,7 @@ CreateLabelStmt:
 					n->tablespacename = $11;
 					n->if_not_exists = true;
 					n->disable_index = $8;
+					n->is_base = false;
 					$$ = (Node *)n;
 				}
 		;

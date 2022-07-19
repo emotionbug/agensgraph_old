@@ -50,44 +50,63 @@ static void AgInheritanceDependancy(Oid laboid, List *supers);
 static void SetMaxStatisticsTarget(Oid laboid);
 
 static bool IsLabel(const char *label_name, Oid namespaceId);
+static void SimpleProcessUtility(Node *node, const char *queryString,
+								 int stmt_location, int stmt_len);
 
 /* See ProcessUtilitySlow() case T_CreateSchemaStmt */
 void
 CreateGraphCommand(CreateGraphStmt *stmt, const char *queryString,
 				   int stmt_location, int stmt_len)
 {
-	Oid			graphid;
-	List	   *parsetree_list;
-	ListCell   *parsetree_item;
+	CreateSeqStmt *createSeqStmt;
+	CreateLabelStmt *createVLabelStmt, *createELabelStmt;
 
-	graphid = GraphCreate(stmt, queryString, stmt_location, stmt_len);
-	if (!OidIsValid(graphid))
-		return;
-
-	CommandCounterIncrement();
-
-	parsetree_list = transformCreateGraphStmt(stmt);
-	foreach(parsetree_item, parsetree_list)
+	if (stmt->kind & CGSK_SCHEMA)
 	{
-		Node	   *stmt = lfirst(parsetree_item);
-		PlannedStmt *wrapper;
-
-		wrapper = makeNode(PlannedStmt);
-		wrapper->commandType = CMD_UTILITY;
-		wrapper->canSetTag = false;
-		wrapper->utilityStmt = stmt;
-		wrapper->stmt_location = stmt_location;
-		wrapper->stmt_len = stmt_len;
-
-		ProcessUtility(wrapper, queryString, PROCESS_UTILITY_SUBCOMMAND,
-					   NULL, NULL, None_Receiver, NULL);
-
+		Oid graphid;
+		graphid = GraphCreate(stmt, queryString, stmt_location, stmt_len);
+		if (!OidIsValid(graphid))
+			return;
 		CommandCounterIncrement();
 	}
 
-	if (graph_path == NULL || strcmp(graph_path, "") == 0)
+	if (stmt->kind & CGSK_SEQUENCE)
+	{
+		createSeqStmt = makeDefaultCreateAGLabelSeqStmt(stmt->graphname,
+														stmt_location);
+		SimpleProcessUtility((Node *) createSeqStmt, queryString, stmt_location,
+							 stmt_len);
+		CommandCounterIncrement();
+	}
+
+	if (stmt->kind & CGSK_VLABEL)
+	{
+		/* Create ag_vertex table */
+		createVLabelStmt = makeDefaultCreateAGLabelStmt(stmt->graphname,
+														LABEL_VERTEX, stmt_location);
+		createVLabelStmt->is_base = (stmt->kind == CGSK_VLABEL);
+		SimpleProcessUtility((Node *) createVLabelStmt, queryString, stmt_location,
+							 stmt_len);
+		CommandCounterIncrement();
+	}
+
+	if (stmt->kind & CGSK_ELABEL)
+	{
+		/* Create ag_ege table */
+		createELabelStmt = makeDefaultCreateAGLabelStmt(stmt->graphname,
+														LABEL_EDGE, stmt_location);
+		createVLabelStmt->is_base = (stmt->kind == CGSK_ELABEL);
+		SimpleProcessUtility((Node *) createELabelStmt, queryString, stmt_location,
+							 stmt_len);
+		CommandCounterIncrement();
+	}
+
+	if (stmt->kind == CGSK_ALL &&
+		(graph_path == NULL || strcmp(graph_path, "") == 0))
+	{
 		SetConfigOption("graph_path", stmt->graphname,
 						PGC_USERSET, PGC_S_SESSION);
+	}
 }
 
 void
@@ -682,4 +701,21 @@ deleteRelatedEdges(const char *vlab)
 
 		relation_close(rel, ShareLock);
 	}
+}
+
+static void
+SimpleProcessUtility(Node *node, const char *queryString, int stmt_location,
+					 int stmt_len)
+{
+	PlannedStmt *wrapper;
+
+	wrapper = makeNode(PlannedStmt);
+	wrapper->commandType = CMD_UTILITY;
+	wrapper->canSetTag = false;
+	wrapper->utilityStmt = node;
+	wrapper->stmt_location = stmt_location;
+	wrapper->stmt_len = stmt_len;
+
+	ProcessUtility(wrapper, queryString, PROCESS_UTILITY_SUBCOMMAND,
+				   NULL, NULL, None_Receiver, NULL);
 }

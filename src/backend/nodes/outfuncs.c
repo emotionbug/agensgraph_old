@@ -3871,6 +3871,7 @@ _outCreateLabelStmt(StringInfo str, const CreateLabelStmt *node)
 	WRITE_NODE_FIELD(options);
 	WRITE_STRING_FIELD(tablespacename);
 	WRITE_BOOL_FIELD(if_not_exists);
+	WRITE_BOOL_FIELD(is_base);
 }
 
 static void
